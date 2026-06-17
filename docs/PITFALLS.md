@@ -81,6 +81,17 @@ real debugging time.
   tailing logs; reserve progress bars for interactive use.
 - **Takeaway:** keep the human progress UI separate from the machine-readable validation surface.
 
+## 9. torch 2.11's default ONNX exporter (dynamo) failed on baked constant tables
+- **Symptom:** `torch.onnx.export(...)` first raised `ModuleNotFoundError: onnxscript`, then a
+  `SerdeError` in the version converter, when exporting the ranker with the (~100 MB) item/feature
+  tables baked in as buffers.
+- **Root cause:** torch 2.11 defaults to the new dynamo-based ONNX exporter (needs `onnxscript`),
+  which choked on the large constant graph.
+- **Fix:** `torch.onnx.export(..., dynamo=False)` (the legacy TorchScript exporter) — parity to torch
+  was `3.8e-6`.
+- **Takeaway:** the ONNX export path is version-sensitive; the legacy exporter is still the robust
+  default for models that bake in large constants.
+
 ---
 
 ## Modeling insights (not bugs, but worth being able to explain)

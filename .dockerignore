@@ -1,0 +1,13 @@
+.git
+.venv
+data
+docs
+idea-stage
+.claude
+.aris
+CLAUDE.md
+__pycache__
+*.pyc
+.ruff_cache
+.pytest_cache
+mlruns

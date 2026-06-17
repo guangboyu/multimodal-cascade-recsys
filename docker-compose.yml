@@ -1,0 +1,16 @@
+# Serving the VLM-Rec cascade. `data/` (trained artifacts) is mounted read-only.
+# Week 6 can extend this with redis (cache), prometheus + grafana (monitoring).
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      - OMP_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

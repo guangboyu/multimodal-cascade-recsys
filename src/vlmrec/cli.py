@@ -25,6 +25,7 @@ COMMANDS = [
     "ranking-train",
     "ranking-eval",
     "rerank",
+    "export-onnx",
 ]
 
 
@@ -75,6 +76,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .rerank import cascade
 
         cascade.run(cfg, paths)
+    elif cmd == "export-onnx":
+        from .serving import export_onnx
+
+        export_onnx.run(cfg, paths)
 
 
 def _week1(cfg, paths: Paths, log) -> None:

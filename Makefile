@@ -1,4 +1,4 @@
-.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank download interactions images encode-text encode-image eda test lint fmt clean
+.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week5 serve export-onnx download interactions images encode-text encode-image eda test lint fmt clean
 
 setup:          ## create .venv and install the Week-1 stack
 	uv sync
@@ -47,6 +47,14 @@ week4:          ## hard-neg cascade fix + pre-ranker distill + diversity (MMR/DP
 	uv run vlmrec rerank
 rerank:
 	uv run vlmrec rerank
+
+# --- Week 5: serving (FastAPI cascade + ONNX) ---
+week5:          ## export ranker to ONNX (then `make serve`)
+	uv run vlmrec export-onnx
+serve:          ## run the FastAPI cascade at http://localhost:8000
+	uv run uvicorn vlmrec.serving.app:app --host 0.0.0.0 --port 8000
+export-onnx:
+	uv run vlmrec export-onnx
 
 test:           ## pure-logic unit tests (no network/GPU)
 	uv run pytest -q

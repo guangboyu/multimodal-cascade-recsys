@@ -35,7 +35,8 @@ production systems allocate complexity.
   multimodal features dominate GAUC and cold-start collapses without them.
 - ✅ **Week 4 — Pre-rank + post-process**: distilled pre-ranker (top-50 keeps 79% of the ranker's
   top-10), MMR/DPP diversity trade-off, and a documented cross-stage cascade-consistency finding.
-- ⬜ Week 5 — Serving (FastAPI + ONNX + Feast)
+- ✅ **Week 5 — Serving**: FastAPI cascade (retrieve→pre-rank→rank→post-process) at **~16 ms p99 on
+  CPU**, FAISS index, ONNX export (parity 4e-6), Dockerfile + docker-compose.
 - ⬜ Week 6 — MLOps + polish
 
 ### Week 2 retrieval — test ablation (temporal leave-last-out)
@@ -79,6 +80,7 @@ make week1                  # full Video_Games build (all reviews + items)
 make week2                  # train two-towers + retrieval ablation (needs Week-1 artifacts)
 make week3                  # train ranker (DIN+DCN-v2+MMoE) + ablation
 make week4                  # pre-ranker distill + cascade diagnosis + MMR/DPP diversity
+make serve                  # run the FastAPI cascade (http://localhost:8000, ~16ms p99)
 ```
 
 Run individual stages:
