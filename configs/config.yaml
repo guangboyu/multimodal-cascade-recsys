@@ -1,0 +1,58 @@
+# VLM-Rec — Week-1 configuration.
+# Override any key on the CLI, e.g.:  uv run vlmrec week1 -o dataset.max_reviews=200000
+
+seed: 42
+device: auto            # auto | cuda | cpu
+
+paths:
+  root: "."
+  data: data
+  raw: data/raw
+  processed: data/processed
+  images: data/images
+  embeddings: data/embeddings
+
+dataset:
+  hf_repo: McAuley-Lab/Amazon-Reviews-2023
+  category: Video_Games
+  max_reviews: null       # null -> full corpus; int -> dev subsample (streamed)
+  positive_rating: 4.0    # rating >= this -> "strong" positive (multi-task label, used later)
+
+filtering:
+  dedup: true             # keep earliest interaction per (user, item)
+  k_core: 5               # iterative k-core on BOTH users and items
+  max_iters: 20
+
+split:
+  scheme: leave_last_out  # temporal, per user: last -> test, 2nd-last -> valid, rest -> train
+  min_seq_len: 3
+
+images:
+  enabled: true
+  max_images: null        # null -> all filtered items; int caps for dev
+  size: large             # preferred size; fallback order: large -> hi_res -> thumb
+  num_workers: 16
+  timeout: 10
+  retries: 2
+
+text:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  fields: [title, description, features]
+  max_chars: 1000
+  batch_size: 256
+
+image_emb:
+  model: ViT-B-32
+  pretrained: laion2b_s34b_b79k
+  batch_size: 256
+
+retrieval:
+  feature_mode: content   # content (multimodal) | hybrid (+ id/price/category) | id (collaborative baseline)
+  out_dim: 128
+  hidden: [256]
+  temperature: 0.05
+  epochs: 10
+  batch_size: 4096
+  lr: 0.002
+  eval_every: 1
+  ks: [10, 50, 100, 500]

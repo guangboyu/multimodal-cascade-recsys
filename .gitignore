@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data & model artifacts (large, reproducible from code) -----------------
+data/
+
+# HuggingFace / torch caches
+.cache/
+hf_cache/
+
+# Experiment tracking / logs
+mlruns/
+logs/
+*.log
+
+# Env / secrets
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Project-local notes / tooling (not for publication)
+CLAUDE.md
+.claude/
+.aris/
+idea-stage/
