@@ -31,6 +31,7 @@ dependencies = [
     "httpx>=0.27",
     "onnxruntime>=1.17",
     "onnxscript>=0.7.0",
+    "prometheus-client>=0.25.0",
 ]
 
 [project.optional-dependencies]

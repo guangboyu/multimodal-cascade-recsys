@@ -26,6 +26,7 @@ COMMANDS = [
     "ranking-eval",
     "rerank",
     "export-onnx",
+    "log-runs",
 ]
 
 
@@ -80,6 +81,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .serving import export_onnx
 
         export_onnx.run(cfg, paths)
+    elif cmd == "log-runs":
+        from .mlops import log_runs
+
+        log_runs.run(cfg, paths)
 
 
 def _week1(cfg, paths: Paths, log) -> None:

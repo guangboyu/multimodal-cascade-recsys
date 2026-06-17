@@ -9,11 +9,19 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
+from prometheus_client import Counter, Histogram, make_asgi_app
 
 from .registry import load_registry
 from .service import recommend
 
 _state: dict = {}
+REQUESTS = Counter("vlmrec_requests_total", "recommend requests", ["diversity"])
+LATENCY = Histogram(
+    "vlmrec_latency_ms",
+    "cascade stage latency (ms)",
+    ["stage"],
+    buckets=(1, 2, 5, 10, 20, 50, 100, 200, 500),
+)
 
 
 @asynccontextmanager
@@ -24,6 +32,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VLM-Rec serving", version="0.1.0", lifespan=lifespan)
+app.mount("/metrics", make_asgi_app())  # Prometheus scrape endpoint
 
 
 @app.get("/health")
@@ -43,4 +52,8 @@ def rec(
     reg = _state["registry"]
     if user_id >= reg.d.n_users:
         raise HTTPException(404, f"user_id out of range (0..{reg.d.n_users - 1})")
-    return recommend(reg, user_id, k_final=k, diversity=diversity)
+    res = recommend(reg, user_id, k_final=k, diversity=diversity)
+    REQUESTS.labels(diversity=diversity).inc()
+    for stage, ms in res["latency_ms"].items():
+        LATENCY.labels(stage=stage).observe(ms)
+    return res

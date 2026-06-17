@@ -1,4 +1,4 @@
-.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week5 serve export-onnx download interactions images encode-text encode-image eda test lint fmt clean
+.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week5 serve export-onnx week6 log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
 
 setup:          ## create .venv and install the Week-1 stack
 	uv sync
@@ -55,6 +55,14 @@ serve:          ## run the FastAPI cascade at http://localhost:8000
 	uv run uvicorn vlmrec.serving.app:app --host 0.0.0.0 --port 8000
 export-onnx:
 	uv run vlmrec export-onnx
+
+# --- Week 6: MLOps (CI in .github/, Prometheus /metrics in the app) ---
+week6:          ## log all results to MLflow
+	uv run vlmrec log-runs
+log-runs:
+	uv run vlmrec log-runs
+mlflow-ui:      ## browse tracked runs at http://localhost:5000
+	uv run mlflow ui --backend-store-uri ./mlruns
 
 test:           ## pure-logic unit tests (no network/GPU)
 	uv run pytest -q

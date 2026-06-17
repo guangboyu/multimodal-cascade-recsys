@@ -24,6 +24,9 @@ post-processing → serving**. Engineering-sophisticated but deliberately unders
 **Emphasis:** *deep* ranking + multimodal feature representation; *lean* retrieval — mirroring how
 production systems allocate complexity.
 
+**📊 Headline results & resume bullets → [`docs/RESULTS.md`](docs/RESULTS.md).** Per-stage write-ups
+([`docs/WEEK1..6.md`](docs/)) and an honest bug log ([`docs/PITFALLS.md`](docs/PITFALLS.md)) included.
+
 ## Status
 
 - ✅ **Week 1 — Data + feature foundation**: download, 5-core filtering, temporal leave-last-out
@@ -37,7 +40,8 @@ production systems allocate complexity.
   top-10), MMR/DPP diversity trade-off, and a documented cross-stage cascade-consistency finding.
 - ✅ **Week 5 — Serving**: FastAPI cascade (retrieve→pre-rank→rank→post-process) at **~16 ms p99 on
   CPU**, FAISS index, ONNX export (parity 4e-6), Dockerfile + docker-compose.
-- ⬜ Week 6 — MLOps + polish
+- ✅ **Week 6 — MLOps**: GitHub Actions CI (lint + tests), Prometheus `/metrics` in the serving app,
+  MLflow experiment tracking.
 
 ### Week 2 retrieval — test ablation (temporal leave-last-out)
 
