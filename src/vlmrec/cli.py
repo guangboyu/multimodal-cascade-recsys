@@ -24,6 +24,7 @@ COMMANDS = [
     "retrieval-eval",
     "ranking-train",
     "ranking-eval",
+    "rerank",
 ]
 
 
@@ -70,6 +71,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .ranking import eval as rkeval
 
         rkeval.run(cfg, paths)
+    elif cmd == "rerank":
+        from .rerank import cascade
+
+        cascade.run(cfg, paths)
 
 
 def _week1(cfg, paths: Paths, log) -> None:

@@ -70,3 +70,10 @@ ranking:
   use_din: true
   use_cross: true
   use_mmoe: true
+
+rerank:
+  cand_k: 200             # retrieval candidates per user (cascade + hard-negative source)
+  hard_neg_frac: 0.5      # fraction of ranker negatives drawn from retrieval candidates
+  prerank_epochs: 2       # distilled pre-ranker
+  mmr_lambda: 0.7         # MMR relevance/diversity tradeoff (1.0 = pure relevance)
+  final_k: 20             # final list size after post-processing

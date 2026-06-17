@@ -101,6 +101,8 @@ def train(
     max_seq_len=30,
     seed=42,
     label="full",
+    cand_topk=None,
+    hard_neg_frac=0.0,
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
@@ -148,7 +150,14 @@ def train(
             idx = perm[s : s + batch_size]
             b = len(idx)
             pi, pu, psat = pos[idx, 1], pos[idx, 0], pos[idx, 2]
-            negs = rng.integers(0, n_items, size=(b, n_neg))
+            if cand_topk is not None and hard_neg_frac > 0:
+                n_hard = int(round(n_neg * hard_neg_frac))
+                cols = rng.integers(0, cand_topk.shape[1], size=(b, n_hard))
+                hard = cand_topk[pu[:, None], cols]  # (b, n_hard) hard negs from retrieval
+                rand = rng.integers(0, n_items, size=(b, n_neg - n_hard))
+                negs = np.concatenate([hard, rand], axis=1)
+            else:
+                negs = rng.integers(0, n_items, size=(b, n_neg))
             cand = np.concatenate([pi[:, None], negs], axis=1).reshape(-1)
             users = np.repeat(pu, 1 + n_neg)
             click = np.zeros((b, 1 + n_neg), np.float32)

@@ -101,3 +101,10 @@ real debugging time.
   easy, so the model never learned to separate the *hard* candidates retrieval actually surfaces. The
   fix is to train the ranker on hard negatives sampled from retrieval — the consistency requirement
   between the retrieval and ranking stages.
+- **Hard negatives aren't a free lunch — the ranker needs a cross-stage score.** Naively training the
+  ranker on retrieved items as negatives *worsened* the cascade (NDCG@10 0.081 → 0.051): the held-out
+  positive is itself a retrieved item, so "retrieved = negative" penalizes it, and the ranker has no
+  retrieval / pre-rank score feature to *refine* (rather than replace) the retriever's order. The
+  standard fix is to feed the retrieval score into the ranker as a feature and exclude near-positives
+  when sampling hard negatives. (Offline cascade NDCG is also retrieval-favoring — the candidates were
+  chosen by the retriever's own similarity.)

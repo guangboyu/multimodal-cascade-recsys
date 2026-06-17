@@ -33,7 +33,8 @@ production systems allocate complexity.
   in-batch negatives + logQ, FAISS ANN, item2item co-visitation, and a Recall@K / cold-start ablation.
 - ✅ **Week 3 — Ranking** (DCN-v2 + DIN + MMoE multi-task): re-scores candidates; ablation shows
   multimodal features dominate GAUC and cold-start collapses without them.
-- ⬜ Week 4 — Pre-rank + post-process
+- ✅ **Week 4 — Pre-rank + post-process**: distilled pre-ranker (top-50 keeps 79% of the ranker's
+  top-10), MMR/DPP diversity trade-off, and a documented cross-stage cascade-consistency finding.
 - ⬜ Week 5 — Serving (FastAPI + ONNX + Feast)
 - ⬜ Week 6 — MLOps + polish
 
@@ -77,6 +78,7 @@ make week1-dev              # fast capped run (~200k reviews, 500 images) — pr
 make week1                  # full Video_Games build (all reviews + items)
 make week2                  # train two-towers + retrieval ablation (needs Week-1 artifacts)
 make week3                  # train ranker (DIN+DCN-v2+MMoE) + ablation
+make week4                  # pre-ranker distill + cascade diagnosis + MMR/DPP diversity
 ```
 
 Run individual stages:
