@@ -31,7 +31,8 @@ production systems allocate complexity.
   94,762 users · 25,612 items · 814,586 interactions; 99.98% image coverage).
 - ✅ **Week 2 — Retrieval** (two-tower + FAISS + i2i): content/hybrid/ID two-towers trained with
   in-batch negatives + logQ, FAISS ANN, item2item co-visitation, and a Recall@K / cold-start ablation.
-- ⬜ Week 3 — Ranking (DCN-v2 + DIN + MMoE)
+- ✅ **Week 3 — Ranking** (DCN-v2 + DIN + MMoE multi-task): re-scores candidates; ablation shows
+  multimodal features dominate GAUC and cold-start collapses without them.
 - ⬜ Week 4 — Pre-rank + post-process
 - ⬜ Week 5 — Serving (FastAPI + ONNX + Feast)
 - ⬜ Week 6 — MLOps + polish
@@ -50,6 +51,21 @@ Multimodal-content retrieval beats pure-ID by **+63% R@100** (**+82%** on the co
 with 30× fewer params; i2i is complementary (best on cold-start) — motivating a blended multi-source
 design. FAISS HNSW recovers 81% of exact top-100. Regenerate via `make week2`.
 
+### Week 3 ranking — ablation (GAUC = per-user AUC)
+
+| variant | GAUC | GAUC (cold-start) |
+|---|---|---|
+| **full (DIN + DCN-v2 + MMoE, multimodal)** | **0.858** | **0.706** |
+| − multimodal | 0.761 | 0.347 |
+| − DIN | 0.853 | 0.692 |
+| − DCN-v2 cross | 0.850 | 0.697 |
+| single-task (no MMoE) | 0.858 | 0.708 |
+
+Multimodal features are the dominant driver — **−0.098 GAUC** overall and cold-start **collapses
+below random** without them; DIN and DCN-v2 each add ~0.006–0.009; multi-task is neutral on click
+while adding the satisfaction objective for free. (Honest cascade finding: the random-negative ranker
+*degrades* the retriever's hard candidates — sample-selection bias, fixed in Week 4.) `make week3`.
+
 ## Quickstart
 
 Requires [`uv`](https://docs.astral.sh/uv/) and (optionally) an NVIDIA GPU.
@@ -60,6 +76,7 @@ uv sync                     # create .venv and install the Week-1 stack
 make week1-dev              # fast capped run (~200k reviews, 500 images) — proves the pipeline
 make week1                  # full Video_Games build (all reviews + items)
 make week2                  # train two-towers + retrieval ablation (needs Week-1 artifacts)
+make week3                  # train ranker (DIN+DCN-v2+MMoE) + ablation
 ```
 
 Run individual stages:

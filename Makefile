@@ -1,4 +1,4 @@
-.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval download interactions images encode-text encode-image eda test lint fmt clean
+.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval download interactions images encode-text encode-image eda test lint fmt clean
 
 setup:          ## create .venv and install the Week-1 stack
 	uv sync
@@ -32,6 +32,15 @@ retrieval-train:
 	uv run vlmrec retrieval-train
 retrieval-eval:
 	uv run vlmrec retrieval-eval
+
+# --- Week 3: ranking (DIN + DCN-v2 + MMoE) ---
+week3:          ## train ranker + run the ablation
+	uv run vlmrec ranking-train
+	uv run vlmrec ranking-eval
+ranking-train:
+	uv run vlmrec ranking-train
+ranking-eval:
+	uv run vlmrec ranking-eval
 
 test:           ## pure-logic unit tests (no network/GPU)
 	uv run pytest -q

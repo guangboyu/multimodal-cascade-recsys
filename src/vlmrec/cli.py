@@ -22,6 +22,8 @@ COMMANDS = [
     "week1",
     "retrieval-train",
     "retrieval-eval",
+    "ranking-train",
+    "ranking-eval",
 ]
 
 
@@ -60,6 +62,14 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .retrieval import eval as reval
 
         reval.run(cfg, paths)
+    elif cmd == "ranking-train":
+        from .ranking import train
+
+        train.run(cfg, paths)
+    elif cmd == "ranking-eval":
+        from .ranking import eval as rkeval
+
+        rkeval.run(cfg, paths)
 
 
 def _week1(cfg, paths: Paths, log) -> None:

@@ -96,3 +96,8 @@ real debugging time.
   This is the concrete argument for blending multiple candidate sources.
 - **In-batch sampled softmax needs a logQ correction.** Without subtracting `log P(item)`, popular items
   dominate the in-batch negatives and get unfairly penalized; the correction keeps the objective unbiased.
+- **Train-serve negative mismatch (sample-selection bias).** The ranker trained on *random* negatives
+  *degraded* the retriever's top-200 when re-ranking (NDCG@10 0.109 → 0.081): random negatives are too
+  easy, so the model never learned to separate the *hard* candidates retrieval actually surfaces. The
+  fix is to train the ranker on hard negatives sampled from retrieval — the consistency requirement
+  between the retrieval and ranking stages.

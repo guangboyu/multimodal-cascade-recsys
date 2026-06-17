@@ -56,3 +56,17 @@ retrieval:
   lr: 0.002
   eval_every: 1
   ks: [10, 50, 100, 500]
+
+ranking:
+  epochs: 3
+  batch_size: 2048
+  lr: 0.001
+  n_neg_train: 4          # sampled negatives per positive (training)
+  n_neg_eval: 100         # sampled negatives per user (GAUC/AUC eval)
+  max_seq_len: 30         # behavior-sequence length for DIN
+  d_model: 128
+  n_tasks: 2              # click + satisfaction (rating>=4)
+  use_multimodal: true
+  use_din: true
+  use_cross: true
+  use_mmoe: true
