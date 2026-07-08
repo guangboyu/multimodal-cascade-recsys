@@ -29,9 +29,13 @@ def _auc(pos: np.ndarray, neg: np.ndarray) -> float:
     if n_p == 0 or n_n == 0:
         return float("nan")
     all_s = np.concatenate([pos, neg])
+    # Mann-Whitney with midranks: tied scores share the average of their ordinal ranks,
+    # so a tie counts 0.5 instead of an argsort-order coin flip.
+    _, inv, counts = np.unique(all_s, return_inverse=True, return_counts=True)
     order = all_s.argsort()
-    ranks = np.empty(len(all_s))
-    ranks[order] = np.arange(1, len(all_s) + 1)
+    ordinal = np.empty(len(all_s))
+    ordinal[order] = np.arange(1, len(all_s) + 1)
+    ranks = (np.bincount(inv, weights=ordinal) / counts)[inv]
     return float((ranks[:n_p].sum() - n_p * (n_p + 1) / 2) / (n_p * n_n))
 
 
@@ -61,7 +65,7 @@ def evaluate_ranking(
         ps, ns = click[:, 0], click[:, 1:]
         pos_c.append(ps)
         neg_c.append(ns.reshape(-1))
-        gauc.extend((ps[:, None] > ns).mean(axis=1))
+        gauc.extend(((ps[:, None] > ns) + 0.5 * (ps[:, None] == ns)).mean(axis=1))
         if logits.shape[1] > 1:
             sat = torch.sigmoid(logits[:, 1]).float().cpu().numpy().reshape(b, 1 + n_neg)
             pos_s.append(sat[:, 0])

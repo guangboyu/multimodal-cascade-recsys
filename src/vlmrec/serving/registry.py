@@ -21,6 +21,13 @@ from ..utils import get_logger
 log = get_logger("vlmrec.serving.registry")
 
 
+def _require(path, make_target: str) -> None:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"missing serving artifact: {path} — run `{make_target}` first to produce it"
+        )
+
+
 @dataclass
 class Registry:
     cfg: object
@@ -42,6 +49,17 @@ def load_registry(cfg=None) -> Registry:
 
     cfg = cfg or load_config()
     paths = Paths(cfg)
+    rdir = paths.data / "retrieval"
+    _require(paths.interactions_parquet, "make week1")
+    _require(paths.text_emb_npy, "make week1")
+    _require(rdir / "item_emb_content.npy", "make week2")
+    _require(rdir / "model_content.pt", "make week2")
+    ranker_ckpt = paths.root / str(cfg.serving.ranker_ckpt)
+    if not ranker_ckpt.exists():
+        fallback = paths.data / "ranking" / "model_full.pt"
+        log.warning("configured ranker_ckpt %s missing — falling back to %s", ranker_ckpt, fallback)
+        ranker_ckpt = fallback
+    _require(ranker_ckpt, "make week3")
     rdata = build_ranking_data(paths)
     d = rdata.base
 
@@ -51,7 +69,6 @@ def load_registry(cfg=None) -> Registry:
     user_sum = torch.tensor(d.user_sum_content)
     user_count = torch.tensor(d.user_count)
 
-    rdir = paths.data / "retrieval"
     item_e = np.ascontiguousarray(np.load(rdir / "item_emb_content.npy").astype(np.float32))
     index = faiss.IndexFlatIP(item_e.shape[1])
     index.add(item_e)
@@ -80,8 +97,9 @@ def load_registry(cfg=None) -> Registry:
         use_cross=True,
         use_mmoe=True,
     )
-    ranker.load_state_dict(torch.load(paths.data / "ranking" / "model_full.pt", map_location="cpu"))
+    ranker.load_state_dict(torch.load(ranker_ckpt, map_location="cpu"))
     ranker.eval()
+    log.info("ranker ckpt: %s", ranker_ckpt)
 
     prerank = None
     pp = paths.data / "rerank" / "prerank.pt"

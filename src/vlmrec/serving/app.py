@@ -52,7 +52,15 @@ def rec(
     reg = _state["registry"]
     if user_id >= reg.d.n_users:
         raise HTTPException(404, f"user_id out of range (0..{reg.d.n_users - 1})")
-    res = recommend(reg, user_id, k_final=k, diversity=diversity)
+    res = recommend(
+        reg,
+        user_id,
+        k_retrieve=int(reg.cfg.serving.k_retrieve),
+        k_prerank=int(reg.cfg.serving.k_prerank),
+        k_final=k,
+        diversity=diversity,
+        mmr_lambda=float(reg.cfg.rerank.mmr_lambda),
+    )
     REQUESTS.labels(diversity=diversity).inc()
     for stage, ms in res["latency_ms"].items():
         LATENCY.labels(stage=stage).observe(ms)
