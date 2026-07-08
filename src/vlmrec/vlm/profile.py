@@ -83,15 +83,22 @@ def parse_profile(raw: str, title: str = "") -> tuple[dict, int]:
     if not isinstance(obj, dict):
         return default_profile(title), 0
     out = default_profile(title)
+    found = 0
     for k, dv in out.items():
         v = obj.get(k)
         if v is None:
             continue
+        found += 1
         if isinstance(dv, list):
             out[k] = [str(x) for x in v][:8] if isinstance(v, list) else [str(v)]
+        elif isinstance(v, str):
+            out[k] = v
+        elif isinstance(v, list):  # list where a string was expected: join, don't repr()
+            out[k] = ", ".join(str(x) for x in v)
         else:
-            out[k] = v if isinstance(v, str) else str(v)
-    return out, 1
+            out[k] = str(v)
+    # a parseable dict with (almost) none of the schema keys is a failure, not a success
+    return out, (1 if found >= 3 else 0)
 
 
 def build_prompt_rows(paths: Paths, max_desc_chars: int = 800) -> list[dict]:
@@ -246,6 +253,17 @@ def run(cfg, paths: Paths) -> dict:
     rows = build_prompt_rows(paths, int(v.max_desc_chars))
     shard = int(v.shard_size)
     n_shards = (len(rows) + shard - 1) // shard
+    # resume safety: shards are keyed by index, so the chunking must match the previous run
+    manifest_path = shard_dir / "manifest.json"
+    if manifest_path.exists():
+        prev = json.loads(manifest_path.read_text())
+        if prev.get("shard_size") != shard or prev.get("n_items") != len(rows):
+            raise RuntimeError(
+                f"shard layout changed (was {prev}, now shard_size={shard} n_items={len(rows)})"
+                f" — delete {shard_dir} to restart cleanly instead of mixing chunkings"
+            )
+    else:
+        manifest_path.write_text(json.dumps({"shard_size": shard, "n_items": len(rows)}))
     log.info("profiling %s items in %d shards of %d", f"{len(rows):,}", n_shards, shard)
 
     backend = None

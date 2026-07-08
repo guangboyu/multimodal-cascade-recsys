@@ -54,6 +54,7 @@ def sample_negatives(
     cand_topk: np.ndarray | None = None,
     hard_frac: float = 0.0,
     max_redraws: int = 3,
+    hard_top: int | None = None,
 ) -> np.ndarray:
     """Sample (B, n_neg) negatives for positives (pu, pi): ``hard_frac`` of them from each user's
     retrieval candidates, the rest uniform over the catalog.
@@ -66,9 +67,11 @@ def sample_negatives(
     """
     b = len(pu)
     n_hard = int(round(n_neg * hard_frac)) if cand_topk is not None else 0
+    # hard_top limits hard draws to the head of the retrieval list — the confusable candidates
+    k_pool = min(hard_top or cand_topk.shape[1], cand_topk.shape[1]) if n_hard else 0
     parts = []
     if n_hard > 0:
-        cols = rng.integers(0, cand_topk.shape[1], size=(b, n_hard))
+        cols = rng.integers(0, k_pool, size=(b, n_hard))
         parts.append(cand_topk[pu[:, None], cols])
     if n_neg - n_hard > 0:
         parts.append(rng.integers(0, n_items, size=(b, n_neg - n_hard)))
@@ -83,7 +86,7 @@ def sample_negatives(
         hard_slot = slots < n_hard
         if hard_slot.any():
             hr = rows[hard_slot]
-            cols = rng.integers(0, cand_topk.shape[1], size=len(hr))
+            cols = rng.integers(0, k_pool, size=len(hr))
             negs[hr, slots[hard_slot]] = cand_topk[pu[hr], cols]
         if (~hard_slot).any():
             negs[rows[~hard_slot], slots[~hard_slot]] = rng.integers(
@@ -99,9 +102,12 @@ def sample_negatives(
 
 
 def build_ranking_data(
-    paths: Paths, max_seq_len: int = 30, sources=("text", "image")
+    paths: Paths,
+    max_seq_len: int = 30,
+    sources=("text", "image"),
+    base: RetrievalData | None = None,
 ) -> RankingData:
-    d = load_retrieval_data(paths, sources=sources)
+    d = base if base is not None else load_retrieval_data(paths, sources=sources)
     n_users, n_items = d.n_users, d.n_items
 
     # per-user time-ordered train sequence (seen CSR is already (user, time)-ordered), last L

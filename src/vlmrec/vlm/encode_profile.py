@@ -39,23 +39,19 @@ def profile_to_text(profile: dict, title: str = "") -> str:
 
 
 def run(cfg, paths: Paths) -> dict:
-    df = pl.read_parquet(paths.profiles_parquet).sort("item_idx")
+    df = pl.read_parquet(paths.profiles_parquet)
     item_map = pl.read_parquet(paths.item_map_parquet)
     meta = pl.read_parquet(paths.meta_parquet)
-    titles = [
-        _field_text(t)
-        for t in (
-            item_map.join(meta, on="parent_asin", how="left")
-            .sort("item_idx")
-            .get_column("title")
-            .to_list()
-        )
-    ]
-    assert df.height == len(titles), f"profiles/items misaligned: {df.height} vs {len(titles)}"
+    titles = item_map.join(meta, on="parent_asin", how="left").select(["item_idx", "title"])
+    # key-based join (not positional zip): profiles must align to item_idx by construction
+    df = df.join(titles, on="item_idx", how="left").sort("item_idx")
+    assert df.height == titles.height, f"profiles/items misaligned: {df.height} vs {titles.height}"
 
     texts = [
-        profile_to_text(json.loads(pj), titles[i])
-        for i, pj in enumerate(df.get_column("profile_json").to_list())
+        profile_to_text(json.loads(pj), _field_text(t))
+        for pj, t in zip(
+            df.get_column("profile_json").to_list(), df.get_column("title").to_list(), strict=True
+        )
     ]
     device = pick_device(str(cfg.device))
     with timer(log, f"encode profiles [{cfg.text.model}] on {device}"):

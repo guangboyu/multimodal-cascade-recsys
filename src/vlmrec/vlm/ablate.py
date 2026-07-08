@@ -78,9 +78,13 @@ def run(cfg, paths: Paths) -> dict:
 
         # ranking: standard week-3-style ranker on the same feature combo (no hard negs/score —
         # this isolates the content representation, not the cascade machinery)
+        from ..ranking.data import build_ranking_data
+
+        prebuilt = build_ranking_data(paths, max_seq_len=int(rk.max_seq_len), base=d)
         rmodel, rd, (content, cat, seq_t, ret_ui), rmetrics = ranking_train(
             cfg,
             paths,
+            rd=prebuilt,
             label=f"ablate:{name}",
             epochs=int(rk.epochs),
             batch_size=int(rk.batch_size),

@@ -132,10 +132,12 @@ def train(
     use_sid=False,
     sid_codes=None,
     eval_user_sample=None,
+    rd=None,  # inject a prebuilt RankingData (ablations: avoids reloading features per combo)
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
-    rd = build_ranking_data(paths, max_seq_len=max_seq_len, sources=sources)
+    if rd is None:
+        rd = build_ranking_data(paths, max_seq_len=max_seq_len, sources=sources)
     d = rd.base
     # content padded with a zero row at index n_items (the sequence pad index)
     content = torch.tensor(

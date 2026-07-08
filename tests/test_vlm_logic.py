@@ -51,11 +51,24 @@ def test_parse_coerces_wrong_types():
 
 
 def test_parse_missing_keys_keep_defaults():
+    # fewer than 3 schema keys present -> the profile is too empty to count as valid
     prof, ok = parse_profile(json.dumps({"category_refined": "Puzzle"}), title="Tetris")
-    assert ok == 1
-    assert prof["category_refined"] == "Puzzle"
+    assert ok == 0
+    assert prof["category_refined"] == "Puzzle"  # partial content is still kept
     assert prof["visual_style"] == []
     assert prof["one_line_summary"] == "Tetris"  # default carries the title
+
+
+def test_parse_schema_free_dict_is_a_failure():
+    assert parse_profile('{"unrelated": 1}')[1] == 0
+    assert parse_profile("{}")[1] == 0
+
+
+def test_parse_list_for_string_field_joins_cleanly():
+    obj = dict(GOOD, target_audience=["teens", "adults"])
+    prof, ok = parse_profile(json.dumps(obj))
+    assert ok == 1
+    assert prof["target_audience"] == "teens, adults"  # no Python repr() garbage
 
 
 def test_profile_to_text_deterministic_and_flat():

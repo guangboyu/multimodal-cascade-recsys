@@ -116,6 +116,7 @@ VARIANT_LABELS = {
     "hardneg_clean": "hard negatives, clean pool (pointwise BCE)",
     "scorefeat_bce": "+ retrieval-score feature (pointwise BCE)",
     "scorefeat_softmax": "+ listwise softmax over the slate",
+    "scorefeat_softmax_slate": "+ serving-like slate (16 negs, 75% hard from top-50)",
 }
 
 
@@ -208,17 +209,28 @@ def run(cfg, paths: Paths) -> dict:
     )
 
     # variant grid: each row isolates one repair (negative hygiene -> score feature -> listwise
-    # loss). Selection on VALID cascade NDCG; test is only reported, never used to choose.
+    # loss -> serving-like slate). Selection on VALID cascade NDCG; test is only reported.
     variants = [
         ("hardneg_clean", dict()),
         ("scorefeat_bce", dict(use_retrieval_score=True)),
         ("scorefeat_softmax", dict(use_retrieval_score=True, loss_type="softmax")),
+        (
+            # slate that looks like serving: big, mostly-hard, drawn from the confusable head
+            "scorefeat_softmax_slate",
+            dict(
+                use_retrieval_score=True,
+                loss_type="softmax",
+                n_neg=16,
+                hard_neg_frac=0.75,
+                hard_neg_top=50,
+            ),
+        ),
     ]
     per_variant: dict[str, dict] = {}
     best = None  # (valid_ndcg, name, model, rd, tensors, metrics)
     for name, flags in variants:
         log.info("=== ranker variant: %s ===", name)
-        model, rd, tensors, metrics = ranking_train(cfg, paths, label=name, **flags, **common)
+        model, rd, tensors, metrics = ranking_train(cfg, paths, label=name, **(common | flags))
         valid = _cascade_eval(cfg, paths, (model, rd, tensors), device, target="valid")
         test = _cascade_eval(cfg, paths, (model, rd, tensors), device, target="test")
         per_variant[name] = {"GAUC": metrics, "valid": valid, "test": test}
@@ -266,7 +278,15 @@ def run(cfg, paths: Paths) -> dict:
     )
     torch.save(student.state_dict(), out_dir / "prerank.pt")
     (out_dir / "prerank.json").write_text(
-        json.dumps({"use_retrieval_score": True, "d_model": 64, "n_tasks": 1})
+        json.dumps(
+            {
+                # must mirror the distilled student's ACTUAL architecture — the student inherits
+                # the winning teacher's score-feature flag, which is not guaranteed True
+                "use_retrieval_score": bool(getattr(student, "use_retrieval_score", False)),
+                "d_model": 64,
+                "n_tasks": 1,
+            }
+        )
     )
 
     diversity = _diversity_tradeoff(model, rd, tensors, cand, paths, device, k=int(r.final_k))

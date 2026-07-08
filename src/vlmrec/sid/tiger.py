@@ -151,7 +151,8 @@ def run(cfg, paths: Paths) -> dict:
         n_heads=int(t.n_heads),
         max_len=(int(t.max_hist) + 2) * levels + 2,
     ).to(device)
-    masks, items_by_code = build_trie_masks(tokens, n_codes, levels, model.vocab - 1)
+    # masks must span the FULL vocab (incl. the BOS slot, never allowed) — logp is vocab-wide
+    masks, items_by_code = build_trie_masks(tokens, n_codes, levels, model.vocab)
     log.info(
         "TIGER-lite: vocab=%d params=%s | %d SID prefixes, %.3f collision groups/item",
         model.vocab,
