@@ -56,8 +56,6 @@ class Registry:
 
 
 def load_registry(cfg=None) -> Registry:
-    import faiss
-
     cfg = cfg or load_config()
     paths = Paths(cfg)
     rdir = paths.data / "retrieval"
@@ -89,9 +87,12 @@ def load_registry(cfg=None) -> Registry:
     user_sum = torch.tensor(d.user_sum_content)
     user_count = torch.tensor(d.user_count)
 
+    from ..retrieval.index import build_index
+
     item_e = np.ascontiguousarray(np.load(rdir / "item_emb_content.npy").astype(np.float32))
-    index = faiss.IndexFlatIP(item_e.shape[1])
-    index.add(item_e)
+    index_kind = str(cfg.serving.get("index", "flat"))  # flat is exact; hnsw for big catalogs
+    index = build_index(item_e, kind=index_kind)
+    log.info("FAISS index: %s over %d items", index_kind, item_e.shape[0])
 
     rr = cfg.retrieval
     tt = TwoTower(

@@ -52,6 +52,7 @@ def evaluate_ranking(
     batch_users=512,
     seed=0,
     ret_ui=None,
+    max_users=None,
 ) -> dict:
     d = rd.base
     targets = d.test_item
@@ -61,6 +62,8 @@ def evaluate_ranking(
         users = np.asarray(user_subset, dtype=np.int64)
         users = users[targets[users] >= 0]
     rng = np.random.default_rng(seed)
+    if max_users is not None and len(users) > int(max_users):
+        users = rng.choice(users, size=int(max_users), replace=False)  # GAUC sampling at scale
     model.eval()
     pos_c, neg_c, gauc, pos_s, neg_s = [], [], [], [], []
     for s in range(0, len(users), batch_users):
@@ -128,6 +131,7 @@ def train(
     loss_type="bce",  # bce (pointwise) | softmax (listwise over the [pos + negs] slate)
     use_sid=False,
     sid_codes=None,
+    eval_user_sample=None,
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
@@ -233,7 +237,15 @@ def train(
             total += loss.item()
             nb += 1
         metrics = evaluate_ranking(
-            model, rd, content, cat, seq_t, device, n_neg=n_neg_eval, ret_ui=ret_ui
+            model,
+            rd,
+            content,
+            cat,
+            seq_t,
+            device,
+            n_neg=n_neg_eval,
+            ret_ui=ret_ui,
+            max_users=eval_user_sample,
         )
         log.info(
             "rank[%s] ep%02d | loss %.4f | %.1fs | %s",
@@ -271,6 +283,7 @@ def run(cfg, paths: Paths) -> dict:
         seed=int(cfg.seed),
         label="full",
         sources=cfg_sources(cfg),
+        eval_user_sample=r.get("eval_user_sample"),
     )
     torch.save(model.state_dict(), out_dir / "model_full.pt")
     (out_dir / "metrics_full.json").write_text(json.dumps(metrics, indent=2))

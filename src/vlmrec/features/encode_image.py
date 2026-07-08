@@ -42,38 +42,47 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
         emb = np.zeros((n_items, dim), dtype=np.float32)
         has_image = np.zeros(n_items, dtype=np.int8)
         batch_size = int(cfg.image_emb.batch_size)
+        num_workers = int(cfg.image_emb.get("num_workers", 8))
 
-        buf_tensors: list[torch.Tensor] = []
-        buf_idx: list[int] = []
+        # decode+preprocess in DataLoader workers — the single-threaded PIL loop was the
+        # throughput bottleneck at scale (GPU idle while one core decoded JPEGs)
+        present = [i for i in range(n_items) if paths.image_path(i).exists()]
 
-        def flush() -> None:
-            if not buf_idx:
-                return
-            with torch.no_grad():
-                batch = torch.stack(buf_tensors).to(device)
-                vecs = model.encode_image(batch)
-                vecs = torch.nn.functional.normalize(vecs, dim=-1).cpu().numpy().astype(np.float32)
-            for j, item_idx in enumerate(buf_idx):
-                emb[item_idx] = vecs[j]
-                has_image[item_idx] = 1
-            buf_tensors.clear()
-            buf_idx.clear()
+        class _ImgDataset(torch.utils.data.Dataset):
+            def __len__(self):
+                return len(present)
 
+            def __getitem__(self, j):
+                item_idx = present[j]
+                try:
+                    img = Image.open(paths.image_path(item_idx)).convert("RGB")
+                except Exception:  # noqa: BLE001 - corrupt file -> treat as missing
+                    return item_idx, None
+                return item_idx, preprocess(img)
+
+        def _collate(batch):
+            good = [(i, t) for i, t in batch if t is not None]
+            if not good:
+                return [], None
+            idxs, tensors = zip(*good, strict=True)
+            return list(idxs), torch.stack(tensors)
+
+        loader = torch.utils.data.DataLoader(
+            _ImgDataset(),
+            batch_size=batch_size,
+            num_workers=num_workers,
+            collate_fn=_collate,
+        )
         from tqdm import tqdm
 
-        for item_idx in tqdm(range(n_items), desc="clip", unit="item"):
-            p = paths.image_path(item_idx)
-            if not p.exists():
+        for idxs, batch in tqdm(loader, desc="clip", unit="batch"):
+            if batch is None:
                 continue
-            try:
-                img = Image.open(p).convert("RGB")
-            except Exception:  # noqa: BLE001 - corrupt file -> treat as missing
-                continue
-            buf_tensors.append(preprocess(img))
-            buf_idx.append(item_idx)
-            if len(buf_idx) >= batch_size:
-                flush()
-        flush()
+            with torch.no_grad():
+                vecs = model.encode_image(batch.to(device))
+                vecs = torch.nn.functional.normalize(vecs, dim=-1).cpu().numpy().astype(np.float32)
+            emb[idxs] = vecs
+            has_image[idxs] = 1
 
         np.save(paths.image_emb_npy, emb)
         np.save(paths.has_image_npy, has_image)

@@ -79,6 +79,7 @@ ranking:
   lr: 0.001
   n_neg_train: 4          # sampled negatives per positive (training)
   n_neg_eval: 100         # sampled negatives per user (GAUC/AUC eval)
+  eval_user_sample: null  # cap GAUC eval to a user sample (needed at 1M+ user scale)
   max_seq_len: 30         # behavior-sequence length for DIN
   d_model: 128
   n_tasks: 2              # click + satisfaction (rating>=4)
@@ -120,3 +121,4 @@ serving:
   k_retrieve: ${rerank.cand_k}  # FAISS candidates fetched per request
   k_prerank: 50                 # pre-ranker cut fed to the heavy ranker
   use_onnx: false               # score the heavy ranker via ONNX Runtime instead of torch
+  index: flat                   # flat (exact) | hnsw | ivf — ANN for big catalogs
