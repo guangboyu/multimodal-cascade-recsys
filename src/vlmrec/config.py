@@ -1,7 +1,7 @@
 """Config loading: a single YAML file plus optional CLI dotlist overrides (OmegaConf).
 
-This is a deliberately lightweight precursor to Hydra (added in Week 6). It keeps every
-run reproducible from `configs/config.yaml` + the exact overrides printed in the logs.
+Deliberately lightweight — one YAML as the source of truth keeps every run reproducible
+from `configs/config.yaml` + the exact overrides printed in the logs.
 """
 
 from __future__ import annotations
