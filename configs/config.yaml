@@ -92,6 +92,27 @@ rerank:
   mmr_lambda: 0.7         # MMR relevance/diversity tradeoff (1.0 = pure relevance)
   final_k: 20             # final list size after post-processing
 
+sid:
+  levels: 3               # semantic-ID depth (codes per item)
+  codebook_size: 256      # codes per level
+  latent_dim: 64
+  hidden: [512, 256]
+  beta: 0.25              # commitment-loss weight
+  epochs: 300
+  batch_size: 2048
+  lr: 0.001
+
+tiger:
+  d_model: 128
+  n_layers: 4
+  n_heads: 4
+  max_hist: 20            # history items (x levels tokens each)
+  epochs: 5
+  batch_size: 256
+  lr: 0.001
+  beam: 20
+  eval_users: 10000
+
 serving:
   ranker_ckpt: data/rerank/ranker_cascade.pt  # cascade-consistent ranker (falls back to model_full)
   k_retrieve: ${rerank.cand_k}  # FAISS candidates fetched per request

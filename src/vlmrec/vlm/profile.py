@@ -261,7 +261,9 @@ def run(cfg, paths: Paths) -> dict:
                     "ok": ok,
                 }
             )
-        pl.DataFrame(recs).write_parquet(out)
+        tmp = out.with_suffix(".tmp.parquet")  # atomic publish: a crash never fakes a done shard
+        pl.DataFrame(recs).write_parquet(tmp)
+        tmp.rename(out)
         log.info("shard %d/%d done | %.1f min elapsed", si + 1, n_shards, (time.time() - t0) / 60)
 
     df = pl.concat(

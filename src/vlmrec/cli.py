@@ -28,6 +28,7 @@ COMMANDS = [
     "vlm-profile",
     "encode-profile",
     "vlm-ablation",
+    "sid-train",
     "export-onnx",
     "log-runs",
 ]
@@ -92,6 +93,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .vlm import ablate
 
         ablate.run(cfg, paths)
+    elif cmd == "sid-train":
+        from .sid import train as sid_train
+
+        sid_train.run(cfg, paths)
     elif cmd == "export-onnx":
         from .serving import export_onnx
 
