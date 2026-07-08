@@ -1,1 +1,1 @@
-"""Week 5 — Serving: FastAPI cascade + ONNX/Triton ranker + Feast + Redis (<100ms p99)."""
+"""Week 5 — Serving: FastAPI cascade (FAISS retrieval + torch ranker), ONNX export, Prometheus."""

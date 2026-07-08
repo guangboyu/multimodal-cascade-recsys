@@ -4,8 +4,6 @@ An end-to-end **multimodal** recommendation system on **Amazon Reviews 2023**, b
 canonical + SOTA industrial RecSys stack: **candidate generation → pre-ranking → ranking →
 post-processing → serving**. Engineering-sophisticated but deliberately understandable.
 
-> Full design, rationale, and the 6–8 week roadmap: [`idea-stage/IDEA_REPORT.md`](idea-stage/IDEA_REPORT.md).
-
 ## Architecture
 
 ```
@@ -14,7 +12,7 @@ post-processing → serving**. Engineering-sophisticated but deliberately unders
  title/desc/feat ─ST──▶│   (late fusion + modality dropout + contrastive align)        │  │
  price/cat/store ─────▶│                                                                │  │
                        └────────────────────────────────────────────────────────────────┘  ▼
- request(user) ─▶[Feast]─▶ ┌ Retrieval ┐  ┌ Pre-rank ┐  ┌  Rank  ┐  ┌ Re-rank ┐
+ request(user) ──────────▶ ┌ Retrieval ┐  ┌ Pre-rank ┐  ┌  Rank  ┐  ┌ Re-rank ┐
                            │2-tower+FAISS│─▶│ distilled │─▶│DCN-v2+DIN│─▶│ DPP/MMR │─▶ top-N
                            │ + i2i (lean)│  │   (~100)  │  │  + MMoE  │  │ + rules │
                            └─────────────┘  └──────────┘  └──────────┘  └─────────┘
@@ -111,11 +109,10 @@ configs/                 # YAML config (dataset, filtering, splits, embeddings)
 src/vlmrec/
   data/                  # download, build_interactions, download_images
   features/              # encode_text (sentence-transformers), encode_image (CLIP)
-  retrieval/ ranking/ rerank/ serving/ eval/   # Weeks 2–5 (stubs for now)
+  retrieval/ ranking/ rerank/ serving/ mlops/  # Weeks 2–6
   config.py paths.py utils.py cli.py
 tests/                   # pure-logic smoke tests (no network/GPU needed)
 data/                    # artifacts (gitignored): raw/ processed/ images/ embeddings/
-idea-stage/IDEA_REPORT.md  # the design doc
 ```
 
 ## Dataset
