@@ -100,8 +100,10 @@ def _write_markdown(out_dir, s) -> None:
 
 
 def run(cfg, paths: Paths) -> dict:
+    from .data import cfg_sources
+
     device = pick_device(str(cfg.device))
-    d = load_retrieval_data(paths)
+    d = load_retrieval_data(paths, sources=cfg_sources(cfg))
     T = _tensors(d, device)
     ks = tuple(int(k) for k in cfg.retrieval.ks)
     out_dir = paths.data / "retrieval"

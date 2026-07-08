@@ -60,6 +60,19 @@ class Paths:
     def dataset_card(self) -> Path:
         return self.processed / "dataset_card.md"
 
+    # vlm profiles ------------------------------------------------------
+    @property
+    def vlm(self) -> Path:
+        return self.data / "vlm"
+
+    @property
+    def profiles_parquet(self) -> Path:
+        return self.vlm / "profiles.parquet"
+
+    @property
+    def profile_emb_npy(self) -> Path:
+        return self.vlm / "profile_emb.npy"
+
     # embeddings --------------------------------------------------------
     @property
     def text_emb_npy(self) -> Path:

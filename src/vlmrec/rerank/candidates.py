@@ -35,8 +35,10 @@ def user_emb_path(paths: Paths):
 
 @torch.no_grad()
 def precompute_candidates(cfg, paths: Paths, k: int = 200, batch_users: int = 4096) -> np.ndarray:
+    from ..retrieval.data import cfg_sources
+
     device = pick_device(str(cfg.device))
-    d = load_retrieval_data(paths)
+    d = load_retrieval_data(paths, sources=cfg_sources(cfg))
     rdir = paths.data / "retrieval"
     item_e = torch.tensor(np.load(rdir / "item_emb_content.npy"), device=device)
     rr = cfg.retrieval

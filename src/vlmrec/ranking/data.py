@@ -98,8 +98,10 @@ def sample_negatives(
     return negs
 
 
-def build_ranking_data(paths: Paths, max_seq_len: int = 30) -> RankingData:
-    d = load_retrieval_data(paths)
+def build_ranking_data(
+    paths: Paths, max_seq_len: int = 30, sources=("text", "image")
+) -> RankingData:
+    d = load_retrieval_data(paths, sources=sources)
     n_users, n_items = d.n_users, d.n_items
 
     # per-user time-ordered train sequence (seen CSR is already (user, time)-ordered), last L

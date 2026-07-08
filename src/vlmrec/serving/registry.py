@@ -78,7 +78,9 @@ def load_registry(cfg=None) -> Registry:
         log.warning("configured ranker_ckpt %s missing — falling back to %s", ranker_ckpt, fallback)
         ranker_ckpt = fallback
     _require(ranker_ckpt, "make week3")
-    rdata = build_ranking_data(paths)
+    from ..retrieval.data import cfg_sources
+
+    rdata = build_ranking_data(paths, sources=cfg_sources(cfg))
     d = rdata.base
 
     content = torch.tensor(np.vstack([d.content, np.zeros((1, d.content.shape[1]), np.float32)]))

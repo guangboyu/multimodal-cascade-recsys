@@ -91,14 +91,39 @@ def _category_leaf_ids(cat_json: list, min_count: int) -> tuple[np.ndarray, int]
     return ids, len(vocab) + 1
 
 
+SOURCE_ORDER = ("text", "image", "vlm")  # canonical concat order, independent of input order
+
+
+def canonical_sources(sources) -> tuple[str, ...]:
+    """Normalize a feature-source selection to the canonical order; reject unknown names."""
+    chosen = set(sources)
+    unknown = chosen - set(SOURCE_ORDER)
+    if unknown or not chosen:
+        raise ValueError(f"bad feature sources {sources!r}; pick from {SOURCE_ORDER}")
+    return tuple(s for s in SOURCE_ORDER if s in chosen)
+
+
+def cfg_sources(cfg) -> tuple[str, ...]:
+    """The feature-source selection from config (features.sources), defaulting to text+image."""
+    feats = cfg.get("features", None)
+    return canonical_sources(tuple(feats.sources)) if feats is not None else ("text", "image")
+
+
 def load_retrieval_data(
-    paths: Paths, n_price_buckets: int = 16, cat_min_count: int = 20
+    paths: Paths, n_price_buckets: int = 16, cat_min_count: int = 20, sources=("text", "image")
 ) -> RetrievalData:
     # --- dense multimodal content (aligned to item_idx) ---
-    text = np.load(paths.text_emb_npy)
-    image = np.load(paths.image_emb_npy)
+    sources = canonical_sources(sources)
+    files = {
+        "text": paths.text_emb_npy,
+        "image": paths.image_emb_npy,
+        "vlm": paths.profile_emb_npy,  # VLM item-profile embeddings (Week 8)
+    }
+    blocks = [np.load(files[s]) for s in sources]
     has = np.load(paths.has_image_npy).astype(np.float32)
-    content = np.concatenate([text, image, has[:, None]], axis=1).astype(np.float32)
+    if len({b.shape[0] for b in blocks} | {has.shape[0]}) != 1:
+        raise ValueError(f"feature blocks misaligned: {[b.shape for b in blocks]}")
+    content = np.concatenate([*blocks, has[:, None]], axis=1).astype(np.float32)
     n_items = content.shape[0]
 
     # --- structured features via bucket/embedding (item_map order == item_idx) ---
@@ -148,11 +173,12 @@ def load_retrieval_data(
     item_pop = np.bincount(tr_i, minlength=n_items).astype(np.int64)
 
     log.info(
-        "retrieval data: users=%s items=%s train_pairs=%s | content_dim=%s | "
+        "retrieval data: users=%s items=%s train_pairs=%s | sources=%s content_dim=%s | "
         "price_buckets=%s category_vocab=%s",
         f"{n_users:,}",
         f"{n_items:,}",
         f"{len(tr_u):,}",
+        "+".join(sources),
         content.shape[1],
         price_card,
         cat_card,

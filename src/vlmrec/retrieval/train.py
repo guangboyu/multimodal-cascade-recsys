@@ -105,13 +105,18 @@ def train(
     eval_every: int = 1,
     ks=(10, 50, 100, 500),
     seed: int = 42,
-) -> dict:
+    sources=("text", "image"),
+    d: RetrievalData | None = None,
+    save: bool = True,
+    return_model: bool = False,
+):
     set_seed(seed)
     device = pick_device(str(cfg.device))
     out_dir = paths.data / "retrieval"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    d = load_retrieval_data(paths)
+    if d is None:
+        d = load_retrieval_data(paths, sources=sources)
     T = _tensors(d, device)
     log_q = torch.log(
         torch.tensor(d.item_pop, dtype=torch.float32, device=device).clamp(min=1)
@@ -172,9 +177,10 @@ def train(
             )
             if mv[f"Recall@{track_k}"] > best:
                 best = mv[f"Recall@{track_k}"]
-                item_e = model.all_item_embeddings(T["content"], T["cat"]).cpu().numpy()
-                np.save(out_dir / f"item_emb_{feature_mode}.npy", item_e)
-                torch.save(model.state_dict(), out_dir / f"model_{feature_mode}.pt")
+                if save:
+                    item_e = model.all_item_embeddings(T["content"], T["cat"]).cpu().numpy()
+                    np.save(out_dir / f"item_emb_{feature_mode}.npy", item_e)
+                    torch.save(model.state_dict(), out_dir / f"model_{feature_mode}.pt")
         else:
             log.info(msg)
 
@@ -182,19 +188,25 @@ def train(
     test_m = evaluate(model, d, T, "test", ks)
     metrics = {
         "feature_mode": feature_mode,
+        "sources": list(sources),
         "epochs": epochs,
         "n_params": int(sum(p.numel() for p in model.parameters())),
         "best_valid": {f"Recall@{track_k}": best},
         "valid_curve": valid_curve,
         "test": test_m,
     }
-    (out_dir / f"metrics_{feature_mode}.json").write_text(json.dumps(metrics, indent=2))
+    if save:
+        (out_dir / f"metrics_{feature_mode}.json").write_text(json.dumps(metrics, indent=2))
+        log.info("saved -> %s", out_dir / f"item_emb_{feature_mode}.npy")
     log.info("[mode=%s] TEST %s", feature_mode, test_m)
-    log.info("saved -> %s", out_dir / f"item_emb_{feature_mode}.npy")
+    if return_model:
+        return metrics, model, d, T
     return metrics
 
 
 def run(cfg, paths: Paths) -> dict:
+    from .data import cfg_sources
+
     r = cfg.retrieval
     return train(
         cfg,
@@ -209,4 +221,5 @@ def run(cfg, paths: Paths) -> dict:
         eval_every=int(r.eval_every),
         ks=tuple(int(k) for k in r.ks),
         seed=int(cfg.seed),
+        sources=cfg_sources(cfg),
     )
