@@ -7,6 +7,11 @@ feature_mode:
                 concatenated to the content (the quantile-bucket + embedding pattern).
   * "id"      — pure collaborative baseline: learned user-id and item-id vectors, no content.
                 Used for the multimodal-vs-ID ablation (the headline cold-start contrast).
+  * "sid"     — item side = semantic-ID code embeddings only (RQ-VAE codes, Week 9): the
+                cold-start-friendly ID replacement. User side stays a learned id vector, so the
+                ablation vs "id" isolates the item-ID swap.
+  * "content_sid" — content ⊕ SID code embeddings (mirrors hybrid's concat, with SIDs instead
+                of raw-ID/bucket embeddings).
 
 Trained with temperature-scaled in-batch sampled softmax (+ optional logQ popularity correction);
 all embeddings are L2-normalized so relevance is a dot product (cosine).
@@ -46,20 +51,40 @@ class TwoTower(nn.Module):
         feature_mode: str = "content",
         dropout: float = 0.1,
         temperature: float = 0.05,
+        sid_codes: torch.Tensor | None = None,  # (N, levels) int64 — required for *sid modes
+        sid_emb_dim: int = 32,
     ):
         super().__init__()
-        if feature_mode not in ("content", "hybrid", "id"):
+        if feature_mode not in ("content", "hybrid", "id", "sid", "content_sid"):
             raise ValueError(f"bad feature_mode: {feature_mode}")
         self.feature_mode = feature_mode
         self.temperature = temperature
         self.out_dim = out_dim
         n_items = cat_cardinalities[0]
 
+        sid_dim = 0
+        if feature_mode in ("sid", "content_sid"):
+            if sid_codes is None:
+                raise ValueError(f"feature_mode={feature_mode} needs sid_codes (run sid-train)")
+            self.register_buffer("sid_codes", sid_codes.long())
+            levels = sid_codes.shape[1]
+            n_codes = int(sid_codes.max()) + 1
+            self.sid_embs = nn.ModuleList(
+                [nn.Embedding(n_codes, sid_emb_dim) for _ in range(levels)]
+            )
+            sid_dim = levels * sid_emb_dim
+
         if feature_mode == "id":
             self.user_vec = nn.Embedding(n_users, out_dim)
             self.item_vec = nn.Embedding(n_items, out_dim)
             nn.init.normal_(self.user_vec.weight, std=0.05)
             nn.init.normal_(self.item_vec.weight, std=0.05)
+            return
+        if feature_mode == "sid":
+            # collaborative user vector + semantic-ID item tower: isolates the item-ID swap
+            self.user_vec = nn.Embedding(n_users, out_dim)
+            nn.init.normal_(self.user_vec.weight, std=0.05)
+            self.item_mlp = MLP(sid_dim, list(hidden), out_dim, dropout)
             return
 
         self.user_mlp = MLP(content_dim, list(hidden), out_dim, dropout)
@@ -68,14 +93,22 @@ class TwoTower(nn.Module):
             self.price_emb = nn.Embedding(cat_cardinalities[1], cat_emb_dims[1])
             self.cat_emb = nn.Embedding(cat_cardinalities[2], cat_emb_dims[2])
             item_in = content_dim + sum(cat_emb_dims)
-        else:  # content
-            item_in = content_dim
+        else:  # content / content_sid
+            item_in = content_dim + sid_dim
         self.item_mlp = MLP(item_in, list(hidden), out_dim, dropout)
 
-    # --- item-side input assembly (content / hybrid) ---
-    def _item_input(self, content_rows: torch.Tensor, cat_rows: torch.Tensor) -> torch.Tensor:
+    def _sid_emb(self, i: torch.Tensor) -> torch.Tensor:
+        codes = self.sid_codes[i]  # (B, levels)
+        return torch.cat([emb(codes[:, level]) for level, emb in enumerate(self.sid_embs)], dim=-1)
+
+    # --- item-side input assembly (content / hybrid / content_sid) ---
+    def _item_input(
+        self, content_rows: torch.Tensor, cat_rows: torch.Tensor, i: torch.Tensor
+    ) -> torch.Tensor:
         if self.feature_mode == "content":
             return content_rows
+        if self.feature_mode == "content_sid":
+            return torch.cat([content_rows, self._sid_emb(i)], dim=-1)
         emb = torch.cat(
             [
                 self.item_id_emb(cat_rows[:, 0]),
@@ -90,11 +123,13 @@ class TwoTower(nn.Module):
     def train_embeddings(self, u, i, user_sum, user_count, content, cat):
         if self.feature_mode == "id":
             ue, ie = self.user_vec(u), self.item_vec(i)
+        elif self.feature_mode == "sid":
+            ue, ie = self.user_vec(u), self.item_mlp(self._sid_emb(i))
         else:
             cnt = (user_count[u] - 1).clamp(min=1).unsqueeze(1).float()  # leave-one-out
             pooled = (user_sum[u] - content[i]) / cnt
             ue = self.user_mlp(pooled)
-            ie = self.item_mlp(self._item_input(content[i], cat[i]))
+            ie = self.item_mlp(self._item_input(content[i], cat[i], i))
         return F.normalize(ue, dim=-1), F.normalize(ie, dim=-1)
 
     def loss(self, user_e, item_e, i_idx, log_q=None):
@@ -111,13 +146,17 @@ class TwoTower(nn.Module):
             return F.normalize(self.item_vec.weight, dim=-1)
         outs = []
         for s in range(0, content.shape[0], batch):
-            x = self._item_input(content[s : s + batch], cat[s : s + batch])
+            i = torch.arange(s, min(s + batch, content.shape[0]), device=content.device)
+            if self.feature_mode == "sid":
+                x = self._sid_emb(i)
+            else:
+                x = self._item_input(content[i], cat[i], i)
             outs.append(F.normalize(self.item_mlp(x), dim=-1))
         return torch.cat(outs, 0)
 
     @torch.no_grad()
     def user_embeddings_eval(self, user_idx, user_sum, user_count, content) -> torch.Tensor:
-        if self.feature_mode == "id":
+        if self.feature_mode in ("id", "sid"):
             return F.normalize(self.user_vec(user_idx), dim=-1)
         cnt = user_count[user_idx].clamp(min=1).unsqueeze(1).float()
         pooled = user_sum[user_idx] / cnt

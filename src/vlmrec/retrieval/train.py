@@ -109,6 +109,7 @@ def train(
     d: RetrievalData | None = None,
     save: bool = True,
     return_model: bool = False,
+    sid_codes=None,  # (N, levels) — required for the sid / content_sid feature modes
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
@@ -133,6 +134,7 @@ def train(
         hidden=tuple(hidden),
         feature_mode=feature_mode,
         temperature=temperature,
+        sid_codes=None if sid_codes is None else torch.as_tensor(sid_codes, device=device),
     ).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     log.info(

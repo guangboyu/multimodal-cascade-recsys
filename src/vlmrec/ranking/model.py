@@ -78,6 +78,9 @@ class Ranker(nn.Module):
         use_cross: bool = True,
         use_mmoe: bool = True,
         use_retrieval_score: bool = False,
+        use_sid: bool = False,
+        sid_codes=None,  # (N, levels) int64 — required when use_sid
+        sid_emb_dim: int = 16,
         dropout: float = 0.1,
     ):
         super().__init__()
@@ -86,8 +89,21 @@ class Ranker(nn.Module):
         self.use_cross = use_cross
         self.use_mmoe = use_mmoe
         self.use_retrieval_score = use_retrieval_score
+        self.use_sid = use_sid
         self.n_tasks = n_tasks
         self.pad_idx = cat_cardinalities[0]  # n_items
+
+        sid_dim = 0
+        if use_sid:
+            if sid_codes is None:
+                raise ValueError("use_sid needs sid_codes (run sid-train)")
+            self.register_buffer("sid_codes", sid_codes.long())
+            levels = sid_codes.shape[1]
+            n_codes = int(sid_codes.max()) + 1
+            self.sid_embs = nn.ModuleList(
+                [nn.Embedding(n_codes, sid_emb_dim) for _ in range(levels)]
+            )
+            sid_dim = levels * sid_emb_dim
 
         self.item_id_emb = nn.Embedding(cat_cardinalities[0], cat_emb_dims[0])
         self.price_emb = nn.Embedding(cat_cardinalities[1], cat_emb_dims[1])
@@ -99,6 +115,7 @@ class Ranker(nn.Module):
             (2 + (1 if self.use_din else 0)) if use_multimodal else 0
         )  # cand + profile (+din)
         in_dim = sum(cat_emb_dims) + d_model * mm_blocks + (1 if use_retrieval_score else 0)
+        in_dim += sid_dim
 
         self.cross = CrossNetV2(in_dim, cross_layers) if use_cross else None
         self.deep = nn.Sequential(
@@ -120,6 +137,11 @@ class Ranker(nn.Module):
             if ret_score is None:
                 raise ValueError("model was built with use_retrieval_score but got ret_score=None")
             parts.append(ret_score.reshape(-1, 1).to(parts[0].dtype))
+        if self.use_sid:
+            codes = self.sid_codes[cand]  # (B, levels)
+            parts.append(
+                torch.cat([emb(codes[:, level]) for level, emb in enumerate(self.sid_embs)], dim=-1)
+            )
         if self.use_multimodal:
             cand_c = self.content_proj(content_pad[cand])  # (B, d)
             parts.insert(0, cand_c)

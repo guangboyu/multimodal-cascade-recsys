@@ -122,9 +122,12 @@ def train(
     label="full",
     cand_topk=None,
     hard_neg_frac=0.0,
+    hard_neg_top=None,  # limit hard draws to the head of the retrieval list
     use_retrieval_score=False,
     sources=("text", "image"),
     loss_type="bce",  # bce (pointwise) | softmax (listwise over the [pos + negs] slate)
+    use_sid=False,
+    sid_codes=None,
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
@@ -162,6 +165,8 @@ def train(
         use_cross=use_cross,
         use_mmoe=use_mmoe,
         use_retrieval_score=use_retrieval_score,
+        use_sid=use_sid,
+        sid_codes=None if sid_codes is None else torch.as_tensor(sid_codes, device=device),
     ).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     rng = np.random.default_rng(seed)
@@ -196,6 +201,7 @@ def train(
                 d.test_item,
                 cand_topk=cand_topk,
                 hard_frac=hard_neg_frac,
+                hard_top=hard_neg_top,
             )
             cand = np.concatenate([pi[:, None], negs], axis=1).reshape(-1)
             users = np.repeat(pu, 1 + n_neg)

@@ -1,4 +1,4 @@
-.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week8 vlm-profile encode-profile vlm-ablation week5 serve export-onnx week6 log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
+.PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week8 week9 sid-train sid-eval vlm-profile encode-profile vlm-ablation week5 serve export-onnx week6 log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
 
 setup:          ## create .venv and install everything (faiss/mlflow live in extras)
 	uv sync --all-extras
@@ -59,6 +59,15 @@ encode-profile:
 	uv run vlmrec encode-profile
 vlm-ablation:
 	uv run vlmrec vlm-ablation
+
+# --- Week 9: semantic IDs (RQ-VAE) ---
+week9:          ## train RQ-VAE codes + SID-vs-ID ablation
+	uv run vlmrec sid-train
+	uv run vlmrec sid-eval
+sid-train:
+	uv run vlmrec sid-train
+sid-eval:
+	uv run vlmrec sid-eval
 
 # --- Week 5: serving (FastAPI cascade + ONNX) ---
 week5:          ## export ranker to ONNX (then `make serve`)

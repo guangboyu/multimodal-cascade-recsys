@@ -29,6 +29,7 @@ COMMANDS = [
     "encode-profile",
     "vlm-ablation",
     "sid-train",
+    "sid-eval",
     "export-onnx",
     "log-runs",
 ]
@@ -97,6 +98,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .sid import train as sid_train
 
         sid_train.run(cfg, paths)
+    elif cmd == "sid-eval":
+        from .sid import eval as sid_eval
+
+        sid_eval.run(cfg, paths)
     elif cmd == "export-onnx":
         from .serving import export_onnx
 
