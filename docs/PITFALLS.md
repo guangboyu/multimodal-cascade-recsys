@@ -92,6 +92,42 @@ real debugging time.
 - **Takeaway:** the ONNX export path is version-sensitive; the legacy exporter is still the robust
   default for models that bake in large constants.
 
+## 10. Held-out positives poisoning the hard-negative pool
+- **Symptom:** training the ranker on retrieval-mined hard negatives made the cascade *worse*
+  (NDCG@10 0.081 → 0.051) — the opposite of what hard negatives are for.
+- **Root cause:** the candidate precompute masked only **train**-seen items, but retrieval is good
+  — a user's held-out valid/test positive usually IS retrieved. Sampling negatives from candidates
+  therefore labelled future positives `click=0`.
+- **Fix:** rejection-resample any negative colliding with {row positive, valid item, test item}
+  in both the hard and random paths (`sample_negatives`). Clean pool alone: 0.051 → 0.060.
+- **Takeaway:** hard-negative mining's classic false-negative trap. Ask of every mined negative:
+  *could this be a positive I just haven't observed?*
+
+## 11. A "was-retrieved" membership flag would have been reverse label leakage
+- **Symptom (avoided):** the obvious cross-stage feature — a binary "item ∈ retrieval top-K" —
+  looked reasonable but would have poisoned training.
+- **Root cause:** train positives are seen-masked *out* of the candidate file, so at train time
+  every positive carries flag=0 and most hard negatives flag=1 — the flag encodes the label,
+  inverted. The same residual bias appeared empirically: concentrating hard negatives in the
+  top-50 (most candidate-membership-correlated slate) cratered cascade NDCG to 0.032.
+- **Fix:** use the **continuous retrieval score** `u_e·i_e`, defined for every (user, item) pair,
+  positives included — no membership discontinuity, and byte-identical to the FAISS score at
+  serving time. Score feature: 0.060 → 0.075 (+48% cumulative over the poisoned run).
+- **Takeaway:** judge a feature by *how it is constructed at training time*, not what it means at
+  serving time. Anything derived from a seen-masked artifact inherits the mask.
+
+## 12. Offline cascade NDCG is retrieval-favoring — and fusion tuning proves it
+- **Symptom:** after every fix, no ranker variant beat raw retrieval order (0.075 vs 0.109), and
+  tuning score-fusion α on valid converged to α≈1 (pure retrieval).
+- **Root cause:** the candidate set was *selected by the retriever's own similarity*, so metrics
+  computed on it give the retriever home-field advantage; the eval can't observe items the
+  retriever ranks low but the user would love.
+- **Fix (framing, not code):** report the ablation ladder honestly, ship the valid-tuned fusion
+  (guaranteed ≥ retrieval order by construction), and note that the unbiased comparison needs
+  online A/B or counterfactual estimators (IPS/DR).
+- **Takeaway:** when the eval candidates come from the model you're comparing against, treat
+  "challenger loses" as expected-bias first, model-failure second.
+
 ---
 
 ## Modeling insights (not bugs, but worth being able to explain)
