@@ -30,6 +30,7 @@ COMMANDS = [
     "vlm-ablation",
     "sid-train",
     "sid-eval",
+    "tiger-demo",
     "export-onnx",
     "log-runs",
 ]
@@ -102,6 +103,10 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .sid import eval as sid_eval
 
         sid_eval.run(cfg, paths)
+    elif cmd == "tiger-demo":
+        from .sid import tiger
+
+        tiger.run(cfg, paths)
     elif cmd == "export-onnx":
         from .serving import export_onnx
 
