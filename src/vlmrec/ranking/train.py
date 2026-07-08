@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 from ..paths import Paths
 from ..utils import get_logger, pick_device, set_seed
-from .data import build_ranking_data
+from .data import build_ranking_data, sample_negatives
 from .model import Ranker
 
 log = get_logger("vlmrec.ranking.train")
@@ -154,14 +154,17 @@ def train(
             idx = perm[s : s + batch_size]
             b = len(idx)
             pi, pu, psat = pos[idx, 1], pos[idx, 0], pos[idx, 2]
-            if cand_topk is not None and hard_neg_frac > 0:
-                n_hard = int(round(n_neg * hard_neg_frac))
-                cols = rng.integers(0, cand_topk.shape[1], size=(b, n_hard))
-                hard = cand_topk[pu[:, None], cols]  # (b, n_hard) hard negs from retrieval
-                rand = rng.integers(0, n_items, size=(b, n_neg - n_hard))
-                negs = np.concatenate([hard, rand], axis=1)
-            else:
-                negs = rng.integers(0, n_items, size=(b, n_neg))
+            negs = sample_negatives(
+                rng,
+                pu,
+                pi,
+                n_items,
+                n_neg,
+                d.valid_item,
+                d.test_item,
+                cand_topk=cand_topk,
+                hard_frac=hard_neg_frac,
+            )
             cand = np.concatenate([pi[:, None], negs], axis=1).reshape(-1)
             users = np.repeat(pu, 1 + n_neg)
             click = np.zeros((b, 1 + n_neg), np.float32)

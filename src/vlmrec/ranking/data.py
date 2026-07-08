@@ -43,6 +43,61 @@ class RankingData:
         return self.base.n_items
 
 
+def sample_negatives(
+    rng: np.random.Generator,
+    pu: np.ndarray,
+    pi: np.ndarray,
+    n_items: int,
+    n_neg: int,
+    valid_item: np.ndarray,
+    test_item: np.ndarray,
+    cand_topk: np.ndarray | None = None,
+    hard_frac: float = 0.0,
+    max_redraws: int = 3,
+) -> np.ndarray:
+    """Sample (B, n_neg) negatives for positives (pu, pi): ``hard_frac`` of them from each user's
+    retrieval candidates, the rest uniform over the catalog.
+
+    Excludes the row's own positive and the user's held-out valid/test items from BOTH pools —
+    a user's future positive is usually retrieved, so labelling it click=0 poisons hard-negative
+    training (the Week-4 cascade failure; see docs/PITFALLS.md). Collisions are rejection-resampled
+    (hard slots redraw from the candidate row, random slots from the catalog); the final fallback
+    walks stragglers off the banned set deterministically.
+    """
+    b = len(pu)
+    n_hard = int(round(n_neg * hard_frac)) if cand_topk is not None else 0
+    parts = []
+    if n_hard > 0:
+        cols = rng.integers(0, cand_topk.shape[1], size=(b, n_hard))
+        parts.append(cand_topk[pu[:, None], cols])
+    if n_neg - n_hard > 0:
+        parts.append(rng.integers(0, n_items, size=(b, n_neg - n_hard)))
+    negs = np.concatenate(parts, axis=1)
+
+    banned = np.stack([pi, valid_item[pu], test_item[pu]], axis=1)  # (B, 3); -1 never collides
+    for _ in range(max_redraws):
+        bad = (negs[:, :, None] == banned[:, None, :]).any(axis=2)
+        if not bad.any():
+            return negs
+        rows, slots = np.nonzero(bad)
+        hard_slot = slots < n_hard
+        if hard_slot.any():
+            hr = rows[hard_slot]
+            cols = rng.integers(0, cand_topk.shape[1], size=len(hr))
+            negs[hr, slots[hard_slot]] = cand_topk[pu[hr], cols]
+        if (~hard_slot).any():
+            negs[rows[~hard_slot], slots[~hard_slot]] = rng.integers(
+                0, n_items, size=int((~hard_slot).sum())
+            )
+    # guarantee: banned has <=3 distinct values per row, so +1 steps terminate in <=4 passes
+    bad = (negs[:, :, None] == banned[:, None, :]).any(axis=2)
+    while bad.any():
+        idx = np.nonzero(bad)
+        negs[idx] = (negs[idx] + 1) % n_items
+        bad = (negs[:, :, None] == banned[:, None, :]).any(axis=2)
+    return negs
+
+
 def build_ranking_data(paths: Paths, max_seq_len: int = 30) -> RankingData:
     d = load_retrieval_data(paths)
     n_users, n_items = d.n_users, d.n_items
