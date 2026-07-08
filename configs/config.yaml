@@ -46,8 +46,10 @@ features:
 
 vlm:
   model: Qwen/Qwen2.5-VL-7B-Instruct
-  backend: vllm             # vllm | transformers (auto-falls-back if vllm missing)
-  fallback_model: Qwen/Qwen2.5-VL-3B-Instruct  # used by the transformers backend
+  # vllm's PyPI wheel links libcudart.so.13 (CUDA 13) — unusable on this 12.8 driver, the same
+  # too-new-CUDA pitfall as torch cu130 (docs/PITFALLS.md). transformers backend runs the model.
+  backend: transformers     # vllm | transformers (auto-falls-back if vllm import fails)
+  fallback_model: Qwen/Qwen2.5-VL-3B-Instruct  # used when falling back from vllm
   max_new_tokens: 320
   temperature: 0.0
   max_pixels: 589824        # 768x768 image-token cap per image

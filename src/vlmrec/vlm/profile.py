@@ -165,15 +165,19 @@ class _VllmBackend:
 class _TransformersBackend:
     name = "transformers"
 
-    def __init__(self, v, batch_size: int = 8):
+    def __init__(self, v, model_id: str | None = None, batch_size: int = 8):
         import torch
         from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
-        model_id = str(v.get("fallback_model", v.model))
+        model_id = model_id or str(v.model)
+        self.name = f"transformers:{model_id}"
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, device_map="cuda"
         ).eval()
         self.processor = AutoProcessor.from_pretrained(model_id, max_pixels=int(v.max_pixels))
+        # decoder-only generation must left-pad: right-padding makes every non-longest row in
+        # the batch generate from pad tokens -> garbage (classic batched-generate bug)
+        self.processor.tokenizer.padding_side = "left"
         self.max_new_tokens = int(v.max_new_tokens)
         self.batch_size = batch_size
 
@@ -228,7 +232,10 @@ def _make_backend(cfg):
         try:
             return _VllmBackend(v)
         except ImportError as e:
+            # e.g. the PyPI vllm wheel links a newer libcudart than the driver supports —
+            # the cu128 pitfall repeating at the inference-engine layer (docs/PITFALLS.md)
             log.warning("vLLM unavailable (%s) — falling back to transformers backend", e)
+            return _TransformersBackend(v, model_id=str(v.get("fallback_model", v.model)))
     return _TransformersBackend(v)
 
 

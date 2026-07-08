@@ -36,9 +36,11 @@ dependencies = [
 retrieval = ["faiss-cpu>=1.8"]                                   # Week 2
 serving = ["fastapi>=0.110", "uvicorn>=0.29", "onnxruntime>=1.17", "faiss-cpu>=1.8"]  # Week 5
 mlops = ["mlflow>=2.12"]                                          # Week 6
-# Week 8 — VLM item profiles. vLLM pins its own torch; if resolution fights the cu128 pin,
-# install into a separate venv (the vlm stage only exchanges parquet/npy with the rest).
-vlm = ["vllm>=0.8", "qwen-vl-utils>=0.0.8", "accelerate>=0.30"]
+# Week 8 — VLM item profiles (transformers backend). vLLM is deliberately NOT listed: its PyPI
+# wheel links a newer libcudart than the 12.8 driver supports AND its torchaudio dep breaks
+# transformers imports (see docs/PITFALLS.md). On a machine with a current driver, install vllm
+# manually and set vlm.backend=vllm for ~3-6x throughput.
+vlm = ["transformers>=4.49", "qwen-vl-utils>=0.0.8", "accelerate>=0.30"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.4"]
