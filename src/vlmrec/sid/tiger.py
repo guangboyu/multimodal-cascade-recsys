@@ -76,17 +76,18 @@ def build_trie_masks(tokens: np.ndarray, n_codes: int, levels: int, vocab: int):
 
 
 def _histories(d, tokens: np.ndarray, max_hist: int):
-    """Per-user token history (last max_hist train items, time-ordered) + last item as target."""
-    seqs, targets, users = [], [], []
+    """Training pairs (history excludes the last train item = the target) and eval histories
+    (the FULL train history — at eval the target is the held-out test item)."""
+    seqs, targets, eval_seqs, users = [], [], [], []
     for u in range(d.n_users):
         items = d.seen_items[d.seen_indptr[u] : d.seen_indptr[u + 1]]
         if len(items) < 2:
             continue
-        hist = items[-(max_hist + 1) : -1]
-        seqs.append(tokens[hist].reshape(-1))
+        seqs.append(tokens[items[-(max_hist + 1) : -1]].reshape(-1))
         targets.append(tokens[items[-1]])
+        eval_seqs.append(tokens[items[-max_hist:]].reshape(-1))
         users.append(u)
-    return seqs, targets, np.array(users)
+    return seqs, targets, eval_seqs, np.array(users)
 
 
 def _pad_batch(seqs: list[np.ndarray], bos: int, device) -> torch.Tensor:
@@ -159,7 +160,7 @@ def run(cfg, paths: Paths) -> dict:
         len(items_by_code) / len(tokens),
     )
 
-    seqs, targets, users = _histories(d, tokens, int(t.max_hist))
+    seqs, targets, eval_seqs, users = _histories(d, tokens, int(t.max_hist))
     opt = torch.optim.Adam(model.parameters(), lr=float(t.lr))
     order_pop = np.argsort(-d.item_pop, kind="stable")
     pop_rank = np.empty(d.n_items, dtype=np.int64)
@@ -197,7 +198,7 @@ def run(cfg, paths: Paths) -> dict:
         ub = [int(u) for u in sample[s : s + 64] if int(u) in user_row]
         if not ub:
             continue
-        hist = _pad_batch([seqs[user_row[u]] for u in ub], model.bos, device)
+        hist = _pad_batch([eval_seqs[user_row[u]] for u in ub], model.bos, device)
         beams = constrained_beam(model, hist, masks, levels, int(t.beam), device)
         for r, u in enumerate(ub):
             seen = set(d.seen_items[d.seen_indptr[u] : d.seen_indptr[u + 1]].tolist())
