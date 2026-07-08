@@ -41,6 +41,20 @@ text:
   max_chars: 1000
   batch_size: 256
 
+features:
+  sources: [text, image]  # item content blocks: text | image | vlm (canonical order enforced)
+
+vlm:
+  model: Qwen/Qwen2.5-VL-7B-Instruct
+  backend: vllm             # vllm | transformers (auto-falls-back if vllm missing)
+  fallback_model: Qwen/Qwen2.5-VL-3B-Instruct  # used by the transformers backend
+  max_new_tokens: 320
+  temperature: 0.0
+  max_pixels: 589824        # 768x768 image-token cap per image
+  gpu_memory_utilization: 0.90
+  shard_size: 2000          # resume granularity for the multi-hour profile job
+  max_desc_chars: 800
+
 image_emb:
   model: ViT-B-32
   pretrained: laion2b_s34b_b79k

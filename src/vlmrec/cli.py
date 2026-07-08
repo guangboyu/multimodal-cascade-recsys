@@ -25,6 +25,9 @@ COMMANDS = [
     "ranking-train",
     "ranking-eval",
     "rerank",
+    "vlm-profile",
+    "encode-profile",
+    "vlm-ablation",
     "export-onnx",
     "log-runs",
 ]
@@ -77,6 +80,18 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .rerank import cascade
 
         cascade.run(cfg, paths)
+    elif cmd == "vlm-profile":
+        from .vlm import profile
+
+        profile.run(cfg, paths)
+    elif cmd == "encode-profile":
+        from .vlm import encode_profile
+
+        encode_profile.run(cfg, paths)
+    elif cmd == "vlm-ablation":
+        from .vlm import ablate
+
+        ablate.run(cfg, paths)
     elif cmd == "export-onnx":
         from .serving import export_onnx
 
