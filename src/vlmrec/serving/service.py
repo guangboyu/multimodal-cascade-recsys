@@ -21,10 +21,22 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 @torch.no_grad()
-def _score(model, reg: Registry, user_idx: int, cand: np.ndarray) -> np.ndarray:
+def _score(model, reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarray) -> np.ndarray:
     cand_t = torch.tensor(cand)
     seq_b = reg.seq_t[torch.tensor([int(user_idx)] * len(cand))]
-    return model(cand_t, seq_b, reg.content, reg.cat).numpy()
+    ret_t = torch.tensor(ret) if getattr(model, "use_retrieval_score", False) else None
+    return model(cand_t, seq_b, reg.content, reg.cat, ret_score=ret_t).numpy()
+
+
+def _score_ranker(reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarray) -> np.ndarray:
+    """Heavy-ranker logits — ONNX Runtime when enabled, torch otherwise (same numbers)."""
+    if reg.onnx is None:
+        return _score(reg.ranker, reg, user_idx, cand, ret)
+    seq = reg.seq_t[torch.tensor([int(user_idx)] * len(cand))].numpy()
+    feeds = {"cand": cand, "seq": seq}
+    if any(i.name == "ret_score" for i in reg.onnx.get_inputs()):
+        feeds["ret_score"] = ret.astype(np.float32)
+    return reg.onnx.run(None, feeds)[0]
 
 
 @torch.no_grad()
@@ -40,26 +52,30 @@ def recommend(
     d = reg.d
     lat: dict[str, float] = {}
 
-    # 1. retrieval (FAISS ANN), drop already-seen items
+    # 1. retrieval (FAISS ANN), drop already-seen items; keep the scores — they ride along
+    #    as the ranker's cross-stage feature (same dot products the ranker saw in training)
     t0 = time.perf_counter()
     ue = reg.tt.user_embeddings_eval(
         torch.tensor([int(user_idx)]), reg.user_sum, reg.user_count, reg.content[:-1]
     )
-    _, idx = reg.index.search(ue.numpy().astype("float32"), k_retrieve + 64)
+    sc, idx = reg.index.search(ue.numpy().astype("float32"), k_retrieve + 64)
     seen = set(d.seen_items[d.seen_indptr[user_idx] : d.seen_indptr[user_idx + 1]].tolist())
-    cand = np.array([c for c in idx[0] if c not in seen][:k_retrieve], dtype=np.int64)
+    keep = np.array([j for j, c in enumerate(idx[0]) if c not in seen][:k_retrieve], dtype=np.int64)
+    cand = idx[0][keep].astype(np.int64)
+    ret = sc[0][keep].astype(np.float32)
     lat["retrieve_ms"] = (time.perf_counter() - t0) * 1000
 
     # 2. pre-rank (lightweight) cut to k_prerank
     t0 = time.perf_counter()
     if reg.prerank is not None and len(cand) > k_prerank:
-        ps = _score(reg.prerank, reg, user_idx, cand)[:, 0]
-        cand = cand[np.argsort(-ps)[:k_prerank]]
+        ps = _score(reg.prerank, reg, user_idx, cand, ret)[:, 0]
+        top = np.argsort(-ps)[:k_prerank]
+        cand, ret = cand[top], ret[top]
     lat["prerank_ms"] = (time.perf_counter() - t0) * 1000
 
     # 3. rank (heavy DIN + DCN-v2 + MMoE)
     t0 = time.perf_counter()
-    logits = _score(reg.ranker, reg, user_idx, cand)
+    logits = _score_ranker(reg, user_idx, cand, ret)
     pclick = _sigmoid(logits[:, 0])
     psat = _sigmoid(logits[:, 1]) if logits.shape[1] > 1 else np.ones_like(pclick)
     lat["rank_ms"] = (time.perf_counter() - t0) * 1000

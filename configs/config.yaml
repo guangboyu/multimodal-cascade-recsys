@@ -79,6 +79,7 @@ rerank:
   final_k: 20             # final list size after post-processing
 
 serving:
-  ranker_ckpt: data/ranking/model_full.pt  # relative to repo root
+  ranker_ckpt: data/rerank/ranker_cascade.pt  # cascade-consistent ranker (falls back to model_full)
   k_retrieve: ${rerank.cand_k}  # FAISS candidates fetched per request
   k_prerank: 50                 # pre-ranker cut fed to the heavy ranker
+  use_onnx: false               # score the heavy ranker via ONNX Runtime instead of torch

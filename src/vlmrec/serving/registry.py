@@ -6,6 +6,7 @@ item/user feature tensors — everything a request needs, loaded at process star
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import numpy as np
@@ -28,6 +29,15 @@ def _require(path, make_target: str) -> None:
         )
 
 
+def _ckpt_meta(ckpt_path) -> dict:
+    """Architecture metadata saved next to a checkpoint (e.g. ranker_cascade.json)."""
+    mp = ckpt_path.with_suffix(".json")
+    try:
+        return json.loads(mp.read_text()) if mp.exists() else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 @dataclass
 class Registry:
     cfg: object
@@ -42,6 +52,7 @@ class Registry:
     tt: object
     ranker: object
     prerank: object | None
+    onnx: object | None = None
 
 
 def load_registry(cfg=None) -> Registry:
@@ -94,39 +105,64 @@ def load_registry(cfg=None) -> Registry:
     tt.eval()
 
     rk = cfg.ranking
+    meta = _ckpt_meta(ranker_ckpt)
     ranker = Ranker(
         d.content_dim,
         d.cat_cardinalities,
-        d_model=int(rk.d_model),
-        n_tasks=int(rk.n_tasks),
+        d_model=int(meta.get("d_model", rk.d_model)),
+        n_tasks=int(meta.get("n_tasks", rk.n_tasks)),
         use_multimodal=True,
         use_din=True,
         use_cross=True,
         use_mmoe=True,
+        use_retrieval_score=bool(meta.get("use_retrieval_score", False)),
     )
     ranker.load_state_dict(torch.load(ranker_ckpt, map_location="cpu"))
     ranker.eval()
-    log.info("ranker ckpt: %s", ranker_ckpt)
+    log.info("ranker ckpt: %s (score_feature=%s)", ranker_ckpt, ranker.use_retrieval_score)
 
     prerank = None
     pp = paths.data / "rerank" / "prerank.pt"
     if pp.exists():
+        pmeta = _ckpt_meta(pp)
         prerank = Ranker(
             d.content_dim,
             d.cat_cardinalities,
-            d_model=64,
-            n_tasks=1,
+            d_model=int(pmeta.get("d_model", 64)),
+            n_tasks=int(pmeta.get("n_tasks", 1)),
             use_multimodal=True,
             use_din=False,
             use_cross=False,
             use_mmoe=False,
+            use_retrieval_score=bool(pmeta.get("use_retrieval_score", False)),
         )
         prerank.load_state_dict(torch.load(pp, map_location="cpu"))
         prerank.eval()
+
+    onnx_sess = None
+    if bool(cfg.serving.get("use_onnx", False)):
+        onnx_path = paths.data / "serving" / "ranker.onnx"
+        _require(onnx_path, "make export-onnx")
+        import onnxruntime as ort
+
+        onnx_sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+        log.info("ONNX runtime enabled: %s", onnx_path)
 
     log.info(
         "registry loaded: items=%s users=%s prerank=%s", d.n_items, d.n_users, prerank is not None
     )
     return Registry(
-        cfg, d, content, cat, seq_t, user_sum, user_count, item_e, index, tt, ranker, prerank
+        cfg,
+        d,
+        content,
+        cat,
+        seq_t,
+        user_sum,
+        user_count,
+        item_e,
+        index,
+        tt,
+        ranker,
+        prerank,
+        onnx_sess,
     )

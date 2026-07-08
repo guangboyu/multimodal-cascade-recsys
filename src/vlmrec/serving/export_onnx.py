@@ -30,26 +30,47 @@ class _ExportRanker(nn.Module):
         return self.ranker(cand, seq, self.content_pad, self.cat)
 
 
+class _ExportRankerScore(nn.Module):
+    """Variant for rankers with the cross-stage retrieval-score input."""
+
+    def __init__(self, ranker, content_pad, cat):
+        super().__init__()
+        self.ranker = ranker
+        self.register_buffer("content_pad", content_pad)
+        self.register_buffer("cat", cat)
+
+    def forward(self, cand, seq, ret_score):
+        return self.ranker(cand, seq, self.content_pad, self.cat, ret_score=ret_score)
+
+
 def export(cfg=None) -> dict:
     cfg = cfg or load_config()
     paths = Paths(cfg)
     reg = load_registry(cfg)
-    wrapper = _ExportRanker(reg.ranker, reg.content, reg.cat).eval()
+    use_score = bool(getattr(reg.ranker, "use_retrieval_score", False))
 
     n = 16
     cand = torch.randint(0, reg.d.n_items, (n,))
     seq = reg.seq_t[torch.zeros(n, dtype=torch.long)]
+    if use_score:
+        wrapper = _ExportRankerScore(reg.ranker, reg.content, reg.cat).eval()
+        args = (cand, seq, torch.rand(n) * 2 - 1)  # retrieval scores live in [-1, 1]
+        input_names = ["cand", "seq", "ret_score"]
+    else:
+        wrapper = _ExportRanker(reg.ranker, reg.content, reg.cat).eval()
+        args = (cand, seq)
+        input_names = ["cand", "seq"]
 
     out_dir = paths.data / "serving"
     out_dir.mkdir(parents=True, exist_ok=True)
     onnx_path = out_dir / "ranker.onnx"
     torch.onnx.export(
         wrapper,
-        (cand, seq),
+        args,
         str(onnx_path),
-        input_names=["cand", "seq"],
+        input_names=input_names,
         output_names=["logits"],
-        dynamic_axes={"cand": {0: "n"}, "seq": {0: "n"}, "logits": {0: "n"}},
+        dynamic_axes={name: {0: "n"} for name in [*input_names, "logits"]},
         opset_version=17,
         dynamo=False,
     )
@@ -58,11 +79,12 @@ def export(cfg=None) -> dict:
 
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     with torch.no_grad():
-        torch_out = wrapper(cand, seq).numpy()
-    onnx_out = sess.run(None, {"cand": cand.numpy(), "seq": seq.numpy()})[0]
+        torch_out = wrapper(*args).numpy()
+    feeds = {name: t.numpy() for name, t in zip(input_names, args, strict=True)}
+    onnx_out = sess.run(None, feeds)[0]
     max_diff = float(np.abs(torch_out - onnx_out).max())
     log.info("ONNX export -> %s | parity max|diff|=%.2e", onnx_path, max_diff)
-    return {"path": str(onnx_path), "max_abs_diff": max_diff}
+    return {"path": str(onnx_path), "max_abs_diff": max_diff, "inputs": input_names}
 
 
 def run(cfg, paths: Paths) -> dict:
