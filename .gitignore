@@ -11,7 +11,8 @@ dist/
 .mypy_cache/
 
 # Data & model artifacts (large, reproducible from code) -----------------
-data/
+# NOTE: anchored to repo root — an unanchored `data/` would also ignore src/vlmrec/data/
+/data/
 
 # HuggingFace / torch caches
 .cache/
