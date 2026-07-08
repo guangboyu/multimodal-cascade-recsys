@@ -1,7 +1,7 @@
 .PHONY: setup week1 week1-dev week2 retrieval-train retrieval-eval week3 ranking-train ranking-eval week4 rerank week5 serve export-onnx week6 log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
 
-setup:          ## create .venv and install the Week-1 stack
-	uv sync
+setup:          ## create .venv and install everything (faiss/mlflow live in extras)
+	uv sync --all-extras
 
 week1:          ## full Video_Games build (all reviews + items)
 	uv run vlmrec week1

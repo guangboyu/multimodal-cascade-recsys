@@ -6,7 +6,8 @@ The production hygiene around the system: continuous integration, monitoring, an
 
 ## What was built
 - **CI — GitHub Actions** (`.github/workflows/ci.yml`): on every push/PR, runs `ruff check`,
-  `ruff format --check`, and `pytest` (the pure-logic k-core / split tests). Keeps `main` green.
+  `ruff format --check`, and `pytest` (pure-logic tests: k-core/splits, MMR/DPP post-processing,
+  AUC tie handling, negative sampling). Keeps `main` green.
 - **Monitoring — Prometheus** (`src/vlmrec/serving/app.py`): a `/metrics` endpoint plus a
   `vlmrec_latency_ms` histogram (labelled per cascade stage) and a `vlmrec_requests_total` counter,
   scraped straight from the live service.

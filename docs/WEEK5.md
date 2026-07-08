@@ -40,4 +40,4 @@ docker compose up --build   # containerized (mounts ./data)
 
 ## Notes / next (Week 6)
 - Serving runs on CPU; the cu128 torch wheel runs CPU-only fine (swap to a CPU wheel to slim the image).
-- Week 6 adds Redis caching, Prometheus/Grafana monitoring, MLflow tracking, and CI.
+- Week 6 adds Prometheus monitoring, MLflow tracking, and CI (Redis/Grafana noted as follow-ups).

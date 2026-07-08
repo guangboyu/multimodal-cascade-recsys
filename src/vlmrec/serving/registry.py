@@ -50,13 +50,20 @@ def load_registry(cfg=None) -> Registry:
     cfg = cfg or load_config()
     paths = Paths(cfg)
     rdir = paths.data / "retrieval"
-    _require(paths.interactions_parquet, "make week1")
-    _require(paths.text_emb_npy, "make week1")
+    for p in (
+        paths.interactions_parquet,
+        paths.item_map_parquet,
+        paths.meta_parquet,
+        paths.text_emb_npy,
+        paths.image_emb_npy,
+        paths.has_image_npy,
+    ):
+        _require(p, "make week1")
     _require(rdir / "item_emb_content.npy", "make week2")
     _require(rdir / "model_content.pt", "make week2")
     ranker_ckpt = paths.root / str(cfg.serving.ranker_ckpt)
-    if not ranker_ckpt.exists():
-        fallback = paths.data / "ranking" / "model_full.pt"
+    fallback = paths.data / "ranking" / "model_full.pt"
+    if not ranker_ckpt.exists() and fallback != ranker_ckpt:
         log.warning("configured ranker_ckpt %s missing — falling back to %s", ranker_ckpt, fallback)
         ranker_ckpt = fallback
     _require(ranker_ckpt, "make week3")

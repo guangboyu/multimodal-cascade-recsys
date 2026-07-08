@@ -75,7 +75,7 @@ while adding the satisfaction objective for free. (Honest cascade finding: the r
 Requires [`uv`](https://docs.astral.sh/uv/) and (optionally) an NVIDIA GPU.
 
 ```bash
-uv sync                     # create .venv and install the Week-1 stack
+uv sync --all-extras        # create .venv and install all stages (faiss, mlflow live in extras)
 
 make week1-dev              # fast capped run (~200k reviews, 500 images) — proves the pipeline
 make week1                  # full Video_Games build (all reviews + items)
