@@ -41,7 +41,17 @@ def _auc(pos: np.ndarray, neg: np.ndarray) -> float:
 
 @torch.no_grad()
 def evaluate_ranking(
-    model, rd, content_pad, cat, seq_t, device, n_neg=100, user_subset=None, batch_users=512, seed=0
+    model,
+    rd,
+    content_pad,
+    cat,
+    seq_t,
+    device,
+    n_neg=100,
+    user_subset=None,
+    batch_users=512,
+    seed=0,
+    ret_ui=None,
 ) -> dict:
     d = rd.base
     targets = d.test_item
@@ -59,8 +69,13 @@ def evaluate_ranking(
         negs = rng.integers(0, d.n_items, size=(b, n_neg))
         cands = np.concatenate([targets[ub][:, None], negs], axis=1)  # (b, 1+n_neg)
         cand_t = torch.as_tensor(cands.reshape(-1), device=device)
-        seq_b = seq_t[torch.as_tensor(np.repeat(ub, 1 + n_neg), device=device)]
-        logits = model(cand_t, seq_b, content_pad, cat)
+        users_t = torch.as_tensor(np.repeat(ub, 1 + n_neg), device=device)
+        seq_b = seq_t[users_t]
+        ret = None
+        if ret_ui is not None:
+            ue, ie = ret_ui
+            ret = (ue[users_t] * ie[cand_t]).sum(-1)  # exact retrieval dot product per pair
+        logits = model(cand_t, seq_b, content_pad, cat, ret_score=ret)
         click = torch.sigmoid(logits[:, 0]).float().cpu().numpy().reshape(b, 1 + n_neg)
         ps, ns = click[:, 0], click[:, 1:]
         pos_c.append(ps)
@@ -107,6 +122,7 @@ def train(
     label="full",
     cand_topk=None,
     hard_neg_frac=0.0,
+    use_retrieval_score=False,
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
@@ -121,6 +137,19 @@ def train(
     pos = rd.pos
     n_pos, n_items = len(pos), d.n_items
 
+    ret_ui = None
+    if use_retrieval_score:
+        # exact two-tower embeddings saved by rerank.candidates — the cross-stage score feature
+        ret_ui = (
+            torch.tensor(
+                np.load(paths.data / "rerank" / "user_emb.npy").astype(np.float32), device=device
+            ),
+            torch.tensor(
+                np.load(paths.data / "retrieval" / "item_emb_content.npy").astype(np.float32),
+                device=device,
+            ),
+        )
+
     model = Ranker(
         d.content_dim,
         d.cat_cardinalities,
@@ -130,6 +159,7 @@ def train(
         use_din=use_din,
         use_cross=use_cross,
         use_mmoe=use_mmoe,
+        use_retrieval_score=use_retrieval_score,
     ).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     rng = np.random.default_rng(seed)
@@ -170,8 +200,10 @@ def train(
             click = np.zeros((b, 1 + n_neg), np.float32)
             click[:, 0] = 1.0
             cand_t = torch.as_tensor(cand, device=device)
-            seq_b = seq_t[torch.as_tensor(users, device=device)]
-            logits = model(cand_t, seq_b, content, cat)
+            users_t = torch.as_tensor(users, device=device)
+            seq_b = seq_t[users_t]
+            ret = (ret_ui[0][users_t] * ret_ui[1][cand_t]).sum(-1) if ret_ui else None
+            logits = model(cand_t, seq_b, content, cat, ret_score=ret)
             loss = F.binary_cross_entropy_with_logits(
                 logits[:, 0], torch.as_tensor(click.reshape(-1), device=device)
             )
@@ -186,7 +218,9 @@ def train(
             opt.step()
             total += loss.item()
             nb += 1
-        metrics = evaluate_ranking(model, rd, content, cat, seq_t, device, n_neg=n_neg_eval)
+        metrics = evaluate_ranking(
+            model, rd, content, cat, seq_t, device, n_neg=n_neg_eval, ret_ui=ret_ui
+        )
         log.info(
             "rank[%s] ep%02d | loss %.4f | %.1fs | %s",
             label,
@@ -196,7 +230,7 @@ def train(
             metrics,
         )
 
-    return model, rd, (content, cat, seq_t), metrics
+    return model, rd, (content, cat, seq_t, ret_ui), metrics
 
 
 def run(cfg, paths: Paths) -> dict:

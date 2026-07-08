@@ -77,6 +77,7 @@ class Ranker(nn.Module):
         use_din: bool = True,
         use_cross: bool = True,
         use_mmoe: bool = True,
+        use_retrieval_score: bool = False,
         dropout: float = 0.1,
     ):
         super().__init__()
@@ -84,6 +85,7 @@ class Ranker(nn.Module):
         self.use_din = use_din and use_multimodal  # DIN needs item content
         self.use_cross = use_cross
         self.use_mmoe = use_mmoe
+        self.use_retrieval_score = use_retrieval_score
         self.n_tasks = n_tasks
         self.pad_idx = cat_cardinalities[0]  # n_items
 
@@ -96,7 +98,7 @@ class Ranker(nn.Module):
         mm_blocks = (
             (2 + (1 if self.use_din else 0)) if use_multimodal else 0
         )  # cand + profile (+din)
-        in_dim = sum(cat_emb_dims) + d_model * mm_blocks
+        in_dim = sum(cat_emb_dims) + d_model * mm_blocks + (1 if use_retrieval_score else 0)
 
         self.cross = CrossNetV2(in_dim, cross_layers) if use_cross else None
         self.deep = nn.Sequential(
@@ -110,9 +112,14 @@ class Ranker(nn.Module):
             self.shared = nn.Sequential(nn.Linear(head_in, expert_dim), nn.ReLU())
             self.heads = nn.ModuleList([nn.Linear(expert_dim, 1) for _ in range(n_tasks)])
 
-    def forward(self, cand, seq, content_pad, cat) -> torch.Tensor:
-        # cand (B,) long; seq (B, L) long (pad=n_items); content_pad (N+1, Cd); cat (N, n_cat)
+    def forward(self, cand, seq, content_pad, cat, ret_score=None) -> torch.Tensor:
+        # cand (B,) long; seq (B, L) long (pad=n_items); content_pad (N+1, Cd); cat (N, n_cat);
+        # ret_score (B,) float — the retrieval dot product u_e·i_e (cross-stage feature, [-1, 1])
         parts = [self.item_id_emb(cand), self.price_emb(cat[cand, 1]), self.cat_emb(cat[cand, 2])]
+        if self.use_retrieval_score:
+            if ret_score is None:
+                raise ValueError("model was built with use_retrieval_score but got ret_score=None")
+            parts.append(ret_score.reshape(-1, 1).to(parts[0].dtype))
         if self.use_multimodal:
             cand_c = self.content_proj(content_pad[cand])  # (B, d)
             parts.insert(0, cand_c)

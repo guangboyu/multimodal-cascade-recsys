@@ -44,12 +44,31 @@ def _cold_users(d):
     return test_users[tp <= thr], thr
 
 
+def _ndcg10(rank: int) -> float:
+    return 1.0 / math.log2(rank + 2) if rank < 10 else 0.0
+
+
+def _minmax(x: np.ndarray) -> np.ndarray:
+    lo, hi = float(x.min()), float(x.max())
+    return (x - lo) / (hi - lo + 1e-9)
+
+
 @torch.no_grad()
-def _cascade_eval(cfg, paths, full_bundle, device, k=200, sample=3000, seed=0) -> dict:
+def _cascade_eval(
+    cfg, paths, full_bundle, device, k=200, sample=3000, seed=0, target="test", alphas=None
+) -> dict:
+    """Re-rank the two-tower's top-K with the ranker; compare NDCG@10/Hit@10 by order.
+
+    ``target`` picks the held-out split ("test" or "valid" — valid is for tuning fusion alpha
+    without touching test). ``alphas`` adds fused orders alpha*retrieval + (1-alpha)*ranker
+    (both min-max normalized per user); alpha=1 degenerates to retrieval order.
+    """
     from ..retrieval.model import TwoTower
 
-    model, rd, (content, cat, seq_t) = full_bundle
+    model, rd, (content, cat, seq_t, _) = full_bundle
+    use_score = bool(getattr(model, "use_retrieval_score", False))
     d = rd.base
+    targets = d.test_item if target == "test" else d.valid_item
     rdir = paths.data / "retrieval"
     item_e = torch.tensor(np.load(rdir / "item_emb_content.npy"), device=device)
     rr = cfg.retrieval
@@ -68,11 +87,13 @@ def _cascade_eval(cfg, paths, full_bundle, device, k=200, sample=3000, seed=0) -
     ucnt = torch.tensor(d.user_count, device=device)
     rcontent = content[:-1]  # drop the pad row -> (N, Cd), matches retrieval
 
-    test_users = np.where(d.test_item >= 0)[0]
+    target_users = np.where(targets >= 0)[0]
     rng = np.random.default_rng(seed)
-    users = rng.choice(test_users, size=min(sample, len(test_users)), replace=False)
+    users = rng.choice(target_users, size=min(sample, len(target_users)), replace=False)
 
+    alphas = list(alphas or [])
     ndcg_r, ndcg_k, hit_r, hit_k, found = [], [], [], [], 0
+    ndcg_a: dict[float, list] = {a: [] for a in alphas}
     for s0 in range(0, len(users), 512):
         ub = users[s0 : s0 + 512]
         b = len(ub)
@@ -88,14 +109,18 @@ def _cascade_eval(cfg, paths, full_bundle, device, k=200, sample=3000, seed=0) -
             np.concatenate(rows) * d.n_items + np.concatenate(cols), device=device
         )
         scores.view(-1)[flat] = -1e9
-        topk = torch.topk(scores, k, dim=1).indices  # (b, k)
+        top = torch.topk(scores, k, dim=1)
+        topk, topv = top.indices, top.values  # (b, k), retrieval-descending
 
         seq_b = seq_t[torch.as_tensor(np.repeat(ub, k), device=device)]
-        rk = model(topk.reshape(-1), seq_b, content, cat)[:, 0].reshape(b, k)
+        ret = topv.reshape(-1).float() if use_score else None
+        rk = model(topk.reshape(-1), seq_b, content, cat, ret_score=ret)[:, 0].reshape(b, k)
         rk_order = torch.argsort(rk, dim=1, descending=True).cpu().numpy()
+        rk_np = torch.sigmoid(rk).float().cpu().numpy()
         topk_np = topk.cpu().numpy()
+        topv_np = topv.float().cpu().numpy()
         for r, u in enumerate(ub):
-            pos = np.where(topk_np[r] == int(d.test_item[u]))[0]
+            pos = np.where(topk_np[r] == int(targets[u]))[0]
             if len(pos) == 0:
                 continue
             found += 1
@@ -103,19 +128,28 @@ def _cascade_eval(cfg, paths, full_bundle, device, k=200, sample=3000, seed=0) -
             rank_pos = int(np.where(rk_order[r] == ret_rank)[0][0])
             hit_r.append(1 if ret_rank < 10 else 0)
             hit_k.append(1 if rank_pos < 10 else 0)
-            ndcg_r.append(1.0 / math.log2(ret_rank + 2) if ret_rank < 10 else 0.0)
-            ndcg_k.append(1.0 / math.log2(rank_pos + 2) if rank_pos < 10 else 0.0)
+            ndcg_r.append(_ndcg10(ret_rank))
+            ndcg_k.append(_ndcg10(rank_pos))
+            if alphas:
+                rn, kn = _minmax(topv_np[r]), _minmax(rk_np[r])
+                for a in alphas:
+                    fused_order = np.argsort(-(a * rn + (1 - a) * kn), kind="stable")
+                    ndcg_a[a].append(_ndcg10(int(np.where(fused_order == ret_rank)[0][0])))
 
     nf = max(found, 1)
-    return {
+    out = {
         "K": k,
         "sample": int(len(users)),
+        "target": target,
         "recall@K": round(found / len(users), 5),
         "ndcg@10_retrieval_order": round(float(np.sum(ndcg_r) / nf), 5),
         "ndcg@10_ranker_order": round(float(np.sum(ndcg_k) / nf), 5),
         "hit@10_retrieval_order": round(float(np.sum(hit_r) / nf), 5),
         "hit@10_ranker_order": round(float(np.sum(hit_k) / nf), 5),
     }
+    if alphas:
+        out["ndcg@10_fused"] = {str(a): round(float(np.sum(v) / nf), 5) for a, v in ndcg_a.items()}
+    return out
 
 
 def _write_md(out_dir, s) -> None:
@@ -168,8 +202,17 @@ def run(cfg, paths: Paths) -> dict:
         model, rd, tensors, m = train(cfg, paths, label=name, **flags, **common)
         d = rd.base
         cold, thr = _cold_users(d)
+        content, cat, seq_t, ret_ui = tensors
         m_cold = evaluate_ranking(
-            model, rd, *tensors, device, n_neg=int(r.n_neg_eval), user_subset=cold
+            model,
+            rd,
+            content,
+            cat,
+            seq_t,
+            device,
+            n_neg=int(r.n_neg_eval),
+            user_subset=cold,
+            ret_ui=ret_ui,
         )
         results[name] = {"full": m, "cold_GAUC": m_cold["click_GAUC"]}
         log.info("rank[%s] GAUC full=%.4f cold=%.4f", name, m["click_GAUC"], m_cold["click_GAUC"])

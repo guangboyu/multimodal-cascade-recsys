@@ -1,9 +1,11 @@
-"""Week-4 orchestrator: hard-negative cascade fix + pre-rank consistency + diversity tradeoff.
+"""Week-4/7 orchestrator: the cascade-consistency fix + pre-rank consistency + diversity tradeoff.
 
-1. precompute the retriever's candidates,
-2. retrain the ranker on HARD negatives (sampled from those candidates) — fixing the Week-3 cascade,
-3. distill a lightweight pre-ranker from it (consistency check),
-4. measure the relevance↔diversity tradeoff (MMR λ sweep + DPP) on the pre-ranked list.
+1. precompute the retriever's candidates (+ scores + user embeddings),
+2. retrain the ranker on CLEAN hard negatives (held-out positives excluded) — two variants:
+   without and with the retrieval-score feature, isolating each repair's contribution,
+3. tune the retrieval/ranker score-fusion alpha on the valid split, report on test,
+4. distill a lightweight pre-ranker from the fixed ranker (consistency check),
+5. measure the relevance↔diversity tradeoff (MMR λ sweep + DPP) on the pre-ranked list.
 """
 
 from __future__ import annotations
@@ -18,16 +20,26 @@ from ..paths import Paths
 from ..ranking.eval import _cascade_eval
 from ..ranking.train import train as ranking_train
 from ..utils import get_logger, pick_device
-from .candidates import candidates_path, precompute_candidates
+from .candidates import candidates_path, precompute_candidates, user_emb_path
 from .postprocess import dpp_greedy, intra_list_diversity, mmr
 from .prerank import distill_prerank
 
 log = get_logger("vlmrec.rerank.cascade")
 
+FUSION_ALPHAS = (0.0, 0.25, 0.5, 0.75, 1.0)
+
 
 def _load_naive_cascade(paths: Paths):
     try:
         return json.loads((paths.data / "ranking" / "ablation.json").read_text()).get("cascade")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _load_historical(paths: Paths, key: str):
+    """Preserve a metric from the previous results.json (e.g. the poisoned hard-neg run)."""
+    try:
+        return json.loads((paths.data / "rerank" / "results.json").read_text()).get(key)
     except Exception:  # noqa: BLE001
         return None
 
@@ -54,7 +66,8 @@ def _diversity_tradeoff(
     k=10,
     lambdas=(1.0, 0.7, 0.5),
 ):
-    content, cat, seq_t = tensors
+    content, cat, seq_t, ret_ui = tensors
+    use_score = bool(getattr(model, "use_retrieval_score", False))
     d = rd.base
     item_e = np.load(paths.data / "retrieval" / "item_emb_content.npy")  # (N, 128) normalized
     big_k = cand.shape[1]
@@ -67,10 +80,12 @@ def _diversity_tradeoff(
 
     for s in range(0, len(users), 256):
         ub = users[s : s + 256]
+        users_t = torch.as_tensor(np.repeat(ub, big_k), device=device)
         cand_flat = cand_t[torch.as_tensor(ub, device=device)].reshape(-1)
-        seq_b = seq_t[torch.as_tensor(np.repeat(ub, big_k), device=device)]
+        seq_b = seq_t[users_t]
+        ret = (ret_ui[0][users_t] * ret_ui[1][cand_flat]).sum(-1) if use_score else None
         sc = (
-            torch.sigmoid(model(cand_flat, seq_b, content, cat)[:, 0])
+            torch.sigmoid(model(cand_flat, seq_b, content, cat, ret_score=ret)[:, 0])
             .reshape(len(ub), big_k)
             .cpu()
             .numpy()
@@ -98,27 +113,38 @@ def _diversity_tradeoff(
 
 
 def _write_md(out_dir, s) -> None:
-    n, h = s["cascade_naive"], s["cascade_hardneg"]
-    lines = ["# Week 4 — Pre-ranking + post-processing", ""]
-    if n and h:
-        nr, nk = n["ndcg@10_retrieval_order"], n["ndcg@10_ranker_order"]
-        hr, hk = h["ndcg@10_retrieval_order"], h["ndcg@10_ranker_order"]
+    lines = ["# Week 4/7 — Cascade fix + pre-ranking + post-processing", ""]
+    rows = [
+        ("naive (random negatives)", s.get("cascade_naive")),
+        ("hard negatives (poisoned: held-out positives labelled 0)", s.get("cascade_hardneg")),
+        ("hard negatives, clean pool", s.get("cascade_hardneg_clean")),
+        ("clean pool + retrieval-score feature", s.get("cascade_scorefeat")),
+    ]
+    lines += [
+        "## Cascade: NDCG@10 re-ranking the retriever's top-200 (test)",
+        "",
+        "| ranker | retrieval order | ranker order |",
+        "|---|---|---|",
+    ]
+    for name, c in rows:
+        if c:
+            r0, k0 = c["ndcg@10_retrieval_order"], c["ndcg@10_ranker_order"]
+            lines.append(f"| {name} | {r0:.3f} | {k0:.3f} |")
+    if s.get("fusion"):
+        f = s["fusion"]
         lines += [
-            "## Cascade diagnosis (honest negative result)",
-            "NDCG@10 when re-ranking the retriever's candidates (retrieval order -> ranker order):",
             "",
-            "| ranker | retrieval order | ranker order |",
-            "|---|---|---|",
-            f"| naive (random negatives) | {nr:.3f} | {nk:.3f} |",
-            f"| hard negatives | {hr:.3f} | {hk:.3f} |",
-            "",
-            "Both rankers *lower* NDCG vs retrieval order; naive hard negatives make it worse.",
-            "Labelling retrieved items as negatives teaches 'retrieved = negative', penalizing the",
-            "held-out positive (itself retrieved); the metric is retrieval-favoring. Principled",
-            "fix: feed the retrieval/pre-rank score to the ranker as a feature so it refines (not",
-            "discards) the retrieval signal (see docs/PITFALLS.md).",
-            "",
+            f"Score fusion α·retrieval + (1−α)·ranker: α={f['alpha']} (tuned on valid) → "
+            f"test NDCG@10 **{f['test_ndcg@10']:.3f}**.",
         ]
+    lines += [
+        "",
+        "The Week-3/4 failure modes and the fix are documented in docs/PITFALLS.md:",
+        "random negatives never teach the serving distribution; naive hard negatives poison",
+        "labels with held-out positives; the fix = clean negative pool + the retrieval score",
+        "as a ranker input so ranking refines (not fights) the retrieval signal.",
+        "",
+    ]
     if s.get("prerank_consistency"):
         rec = next(iter(s["prerank_consistency"].values()))
         lines += [
@@ -150,13 +176,12 @@ def run(cfg, paths: Paths) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cpath = candidates_path(paths)
-    cand = np.load(cpath) if cpath.exists() else precompute_candidates(cfg, paths, k=int(r.cand_k))
+    if cpath.exists() and user_emb_path(paths).exists():
+        cand = np.load(cpath)
+    else:  # (re)compute — older runs lack the score/user-embedding artifacts
+        cand = precompute_candidates(cfg, paths, k=int(r.cand_k))
 
-    log.info("=== training ranker on HARD negatives (frac=%.2f) ===", float(r.hard_neg_frac))
-    model, rd, tensors, metrics = ranking_train(
-        cfg,
-        paths,
-        label="hardneg",
+    common = dict(
         epochs=int(rk.epochs),
         batch_size=int(rk.batch_size),
         lr=float(rk.lr),
@@ -169,27 +194,64 @@ def run(cfg, paths: Paths) -> dict:
         cand_topk=cand,
         hard_neg_frac=float(r.hard_neg_frac),
     )
-    torch.save(model.state_dict(), out_dir / "ranker_hardneg.pt")
 
-    cascade_hardneg = _cascade_eval(cfg, paths, (model, rd, tensors), device)
-    log.info("cascade (hard-neg ranker): %s", cascade_hardneg)
+    log.info("=== ranker A: clean hard negatives, no score feature ===")
+    model_a, rd, tensors_a, metrics_a = ranking_train(cfg, paths, label="hardneg_clean", **common)
+    cascade_clean = _cascade_eval(cfg, paths, (model_a, rd, tensors_a), device)
+    log.info("cascade (clean hard-neg): %s", cascade_clean)
+    del model_a, tensors_a
+
+    log.info("=== ranker B: clean hard negatives + retrieval-score feature ===")
+    model, rd, tensors, metrics = ranking_train(
+        cfg, paths, label="cascade", use_retrieval_score=True, **common
+    )
+    torch.save(model.state_dict(), out_dir / "ranker_cascade.pt")
+    (out_dir / "ranker_cascade.json").write_text(
+        json.dumps(
+            {"use_retrieval_score": True, "d_model": int(rk.d_model), "n_tasks": int(rk.n_tasks)}
+        )
+    )
+    cascade_scorefeat = _cascade_eval(cfg, paths, (model, rd, tensors), device)
+    log.info("cascade (score-feature ranker): %s", cascade_scorefeat)
+
+    # score fusion: tune alpha on the VALID split, report the chosen alpha on test
+    fuse_valid = _cascade_eval(
+        cfg, paths, (model, rd, tensors), device, target="valid", alphas=FUSION_ALPHAS
+    )
+    best_alpha = max(fuse_valid["ndcg@10_fused"], key=fuse_valid["ndcg@10_fused"].get)
+    fuse_test = _cascade_eval(
+        cfg, paths, (model, rd, tensors), device, target="test", alphas=[float(best_alpha)]
+    )
+    fusion = {
+        "alpha": float(best_alpha),
+        "valid_sweep": fuse_valid["ndcg@10_fused"],
+        "test_ndcg@10": fuse_test["ndcg@10_fused"][best_alpha],
+    }
+    log.info("fusion: %s", fusion)
 
     student, consistency = distill_prerank(
         model, rd, tensors, cand, device, epochs=int(r.prerank_epochs)
     )
     torch.save(student.state_dict(), out_dir / "prerank.pt")
+    (out_dir / "prerank.json").write_text(
+        json.dumps({"use_retrieval_score": True, "d_model": 64, "n_tasks": 1})
+    )
 
     diversity = _diversity_tradeoff(model, rd, tensors, cand, paths, device, k=int(r.final_k))
     log.info("diversity tradeoff: %s", diversity)
 
     summary = {
         "cascade_naive": _load_naive_cascade(paths),
-        "cascade_hardneg": cascade_hardneg,
-        "ranker_hardneg_GAUC": metrics,
+        "cascade_hardneg": _load_historical(paths, "cascade_hardneg"),  # poisoned run, kept
+        "cascade_hardneg_clean": cascade_clean,
+        "cascade_scorefeat": cascade_scorefeat,
+        "fusion": fusion,
+        "ranker_hardneg_clean_GAUC": metrics_a,
+        "ranker_cascade_GAUC": metrics,
         "prerank_consistency": consistency,
         "diversity_tradeoff": diversity,
     }
     (out_dir / "results.json").write_text(json.dumps(summary, indent=2, default=float))
     _write_md(out_dir, summary)
-    log.info("week4 results -> %s", out_dir / "results.json")
+    log.info("cascade results -> %s", out_dir / "results.json")
     return summary
