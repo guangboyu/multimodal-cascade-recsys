@@ -112,14 +112,21 @@ def _diversity_tradeoff(
     }
 
 
+VARIANT_LABELS = {
+    "hardneg_clean": "hard negatives, clean pool (pointwise BCE)",
+    "scorefeat_bce": "+ retrieval-score feature (pointwise BCE)",
+    "scorefeat_softmax": "+ listwise softmax over the slate",
+}
+
+
 def _write_md(out_dir, s) -> None:
     lines = ["# Week 4/7 — Cascade fix + pre-ranking + post-processing", ""]
     rows = [
         ("naive (random negatives)", s.get("cascade_naive")),
         ("hard negatives (poisoned: held-out positives labelled 0)", s.get("cascade_hardneg")),
-        ("hard negatives, clean pool", s.get("cascade_hardneg_clean")),
-        ("clean pool + retrieval-score feature", s.get("cascade_scorefeat")),
     ]
+    for name, v in (s.get("variants") or {}).items():
+        rows.append((VARIANT_LABELS.get(name, name), v["test"]))
     lines += [
         "## Cascade: NDCG@10 re-ranking the retriever's top-200 (test)",
         "",
@@ -130,6 +137,8 @@ def _write_md(out_dir, s) -> None:
         if c:
             r0, k0 = c["ndcg@10_retrieval_order"], c["ndcg@10_ranker_order"]
             lines.append(f"| {name} | {r0:.3f} | {k0:.3f} |")
+    if s.get("best_variant"):
+        lines += ["", f"Serving checkpoint = **{s['best_variant']}** (chosen on valid, not test)."]
     if s.get("fusion"):
         f = s["fusion"]
         lines += [
@@ -181,6 +190,8 @@ def run(cfg, paths: Paths) -> dict:
     else:  # (re)compute — older runs lack the score/user-embedding artifacts
         cand = precompute_candidates(cfg, paths, k=int(r.cand_k))
 
+    from ..retrieval.data import cfg_sources
+
     common = dict(
         epochs=int(rk.epochs),
         batch_size=int(rk.batch_size),
@@ -193,26 +204,47 @@ def run(cfg, paths: Paths) -> dict:
         seed=int(cfg.seed),
         cand_topk=cand,
         hard_neg_frac=float(r.hard_neg_frac),
+        sources=cfg_sources(cfg),
     )
 
-    log.info("=== ranker A: clean hard negatives, no score feature ===")
-    model_a, rd, tensors_a, metrics_a = ranking_train(cfg, paths, label="hardneg_clean", **common)
-    cascade_clean = _cascade_eval(cfg, paths, (model_a, rd, tensors_a), device)
-    log.info("cascade (clean hard-neg): %s", cascade_clean)
-    del model_a, tensors_a
+    # variant grid: each row isolates one repair (negative hygiene -> score feature -> listwise
+    # loss). Selection on VALID cascade NDCG; test is only reported, never used to choose.
+    variants = [
+        ("hardneg_clean", dict()),
+        ("scorefeat_bce", dict(use_retrieval_score=True)),
+        ("scorefeat_softmax", dict(use_retrieval_score=True, loss_type="softmax")),
+    ]
+    per_variant: dict[str, dict] = {}
+    best = None  # (valid_ndcg, name, model, rd, tensors, metrics)
+    for name, flags in variants:
+        log.info("=== ranker variant: %s ===", name)
+        model, rd, tensors, metrics = ranking_train(cfg, paths, label=name, **flags, **common)
+        valid = _cascade_eval(cfg, paths, (model, rd, tensors), device, target="valid")
+        test = _cascade_eval(cfg, paths, (model, rd, tensors), device, target="test")
+        per_variant[name] = {"GAUC": metrics, "valid": valid, "test": test}
+        log.info("[%s] valid ndcg=%s test=%s", name, valid["ndcg@10_ranker_order"], test)
+        score = valid["ndcg@10_ranker_order"]
+        if best is None or score > best[0]:
+            best = (score, name, model, rd, tensors, metrics)
+        else:
+            del model, tensors
+            torch.cuda.empty_cache()
 
-    log.info("=== ranker B: clean hard negatives + retrieval-score feature ===")
-    model, rd, tensors, metrics = ranking_train(
-        cfg, paths, label="cascade", use_retrieval_score=True, **common
-    )
+    _, best_name, model, rd, tensors, metrics = best
+    use_score = bool(getattr(model, "use_retrieval_score", False))
+    log.info("=== best variant on valid: %s (score_feature=%s) ===", best_name, use_score)
     torch.save(model.state_dict(), out_dir / "ranker_cascade.pt")
     (out_dir / "ranker_cascade.json").write_text(
         json.dumps(
-            {"use_retrieval_score": True, "d_model": int(rk.d_model), "n_tasks": int(rk.n_tasks)}
+            {
+                "variant": best_name,
+                "use_retrieval_score": use_score,
+                "d_model": int(rk.d_model),
+                "n_tasks": int(rk.n_tasks),
+            }
         )
     )
-    cascade_scorefeat = _cascade_eval(cfg, paths, (model, rd, tensors), device)
-    log.info("cascade (score-feature ranker): %s", cascade_scorefeat)
+    cascade_scorefeat = per_variant[best_name]["test"]
 
     # score fusion: tune alpha on the VALID split, report the chosen alpha on test
     fuse_valid = _cascade_eval(
@@ -243,10 +275,10 @@ def run(cfg, paths: Paths) -> dict:
     summary = {
         "cascade_naive": _load_naive_cascade(paths),
         "cascade_hardneg": _load_historical(paths, "cascade_hardneg"),  # poisoned run, kept
-        "cascade_hardneg_clean": cascade_clean,
+        "variants": per_variant,
+        "best_variant": best_name,
         "cascade_scorefeat": cascade_scorefeat,
         "fusion": fusion,
-        "ranker_hardneg_clean_GAUC": metrics_a,
         "ranker_cascade_GAUC": metrics,
         "prerank_consistency": consistency,
         "diversity_tradeoff": diversity,

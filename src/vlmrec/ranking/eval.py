@@ -186,6 +186,8 @@ def run(cfg, paths: Paths) -> dict:
     device = pick_device(str(cfg.device))
     out_dir = paths.data / "ranking"
     out_dir.mkdir(parents=True, exist_ok=True)
+    from ..retrieval.data import cfg_sources
+
     common = dict(
         epochs=int(r.epochs),
         batch_size=int(r.batch_size),
@@ -195,6 +197,7 @@ def run(cfg, paths: Paths) -> dict:
         d_model=int(r.d_model),
         max_seq_len=int(r.max_seq_len),
         seed=int(cfg.seed),
+        sources=cfg_sources(cfg),
     )
 
     results, full_bundle, thr = {}, None, None

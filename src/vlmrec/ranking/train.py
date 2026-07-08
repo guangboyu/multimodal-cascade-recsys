@@ -123,10 +123,12 @@ def train(
     cand_topk=None,
     hard_neg_frac=0.0,
     use_retrieval_score=False,
+    sources=("text", "image"),
+    loss_type="bce",  # bce (pointwise) | softmax (listwise over the [pos + negs] slate)
 ):
     set_seed(seed)
     device = pick_device(str(cfg.device))
-    rd = build_ranking_data(paths, max_seq_len=max_seq_len)
+    rd = build_ranking_data(paths, max_seq_len=max_seq_len, sources=sources)
     d = rd.base
     # content padded with a zero row at index n_items (the sequence pad index)
     content = torch.tensor(
@@ -204,9 +206,15 @@ def train(
             seq_b = seq_t[users_t]
             ret = (ret_ui[0][users_t] * ret_ui[1][cand_t]).sum(-1) if ret_ui else None
             logits = model(cand_t, seq_b, content, cat, ret_score=ret)
-            loss = F.binary_cross_entropy_with_logits(
-                logits[:, 0], torch.as_tensor(click.reshape(-1), device=device)
-            )
+            if loss_type == "softmax":
+                # listwise: the positive must out-score its own slate of sampled negatives —
+                # matches the serving task (order retrieved candidates), unlike pointwise BCE
+                clog = logits[:, 0].reshape(b, 1 + n_neg)
+                loss = F.cross_entropy(clog, torch.zeros(b, dtype=torch.long, device=device))
+            else:
+                loss = F.binary_cross_entropy_with_logits(
+                    logits[:, 0], torch.as_tensor(click.reshape(-1), device=device)
+                )
             if n_tasks > 1:
                 sat = np.zeros((b, 1 + n_neg), np.float32)
                 sat[:, 0] = psat
@@ -234,6 +242,8 @@ def train(
 
 
 def run(cfg, paths: Paths) -> dict:
+    from ..retrieval.data import cfg_sources
+
     r = cfg.ranking
     out_dir = paths.data / "ranking"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -254,6 +264,7 @@ def run(cfg, paths: Paths) -> dict:
         max_seq_len=int(r.max_seq_len),
         seed=int(cfg.seed),
         label="full",
+        sources=cfg_sources(cfg),
     )
     torch.save(model.state_dict(), out_dir / "model_full.pt")
     (out_dir / "metrics_full.json").write_text(json.dumps(metrics, indent=2))
