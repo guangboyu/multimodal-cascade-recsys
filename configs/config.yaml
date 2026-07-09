@@ -42,7 +42,8 @@ text:
   batch_size: 256
 
 features:
-  sources: [text, image]  # item content blocks: text | image | vlm (canonical order enforced)
+  # winning Week-8 combo: +1.5% overall R@100 vs text+image; cold-start neutral (documented)
+  sources: [text, image, vlm]  # item content blocks: text | image | vlm (canonical order)
 
 vlm:
   model: Qwen/Qwen2.5-VL-7B-Instruct
