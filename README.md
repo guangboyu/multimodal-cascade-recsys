@@ -7,16 +7,21 @@ post-processing → serving**. Engineering-sophisticated but deliberately unders
 ## Architecture
 
 ```
-                       ┌──────────────── OFFLINE (precompute + train) ────────────────┐
- product image ─CLIP──▶│   Multimodal Fusion ──▶ item content embedding (shared)       │──┐
- title/desc/feat ─ST──▶│   (late fusion + modality dropout + contrastive align)        │  │
- price/cat/store ─────▶│                                                                │  │
-                       └────────────────────────────────────────────────────────────────┘  ▼
- request(user) ──────────▶ ┌ Retrieval ┐  ┌ Pre-rank ┐  ┌  Rank  ┐  ┌ Re-rank ┐
+                  ┌───────────────────── OFFLINE (precompute + train) ─────────────────────┐
+ product image ──▶│ CLIP emb ─┐                                                             │
+        └─────────│ Qwen2.5-VL ─▶ structured item profile ─▶ MiniLM emb ─┐                  │
+ title/desc/feat ─│ MiniLM emb ─┴──────────────────────────────────┬─────┴─▶ fused item     │
+                  │                                                │        content (1281d) │
+                  │                              RQ-VAE ◀──────────┘                        │
+                  │                                └──▶ semantic IDs (3×256 codes)          │
+                  └──────────────────────────────────────────────────────────────┬──────────┘
+                                                                                 ▼
+ request(user) ──────────▶ ┌ Retrieval ┐  ┌ Pre-rank ┐  ┌  Rank   ┐  ┌ Re-rank ┐
                            │2-tower+FAISS│─▶│ distilled │─▶│DCN-v2+DIN│─▶│ DPP/MMR │─▶ top-N
-                           │ + i2i (lean)│  │   (~100)  │  │  + MMoE  │  │ + rules │
+                           │ + i2i (lean)│  │  (~50)    │  │+MMoE+SID │  │ + rules │
                            └─────────────┘  └──────────┘  └──────────┘  └─────────┘
-                          ◀──────────── ONLINE (FastAPI cascade, <100ms p99) ───────────▶
+                          ◀──── ONLINE (FastAPI cascade, 16ms p99 CPU; retrieval score ────▶
+                                        rides through as a cross-stage ranker feature)
 ```
 
 **Emphasis:** *deep* ranking + multimodal feature representation; *lean* retrieval — mirroring how
@@ -40,6 +45,18 @@ production systems allocate complexity.
   CPU**, FAISS index, ONNX export (parity 4e-6), Dockerfile + docker-compose.
 - ✅ **Week 6 — MLOps**: GitHub Actions CI (lint + tests), Prometheus `/metrics` in the serving app,
   MLflow experiment tracking.
+- ✅ **Week 7 — Cascade consistency**: hard-negative pool hygiene (held-out positives excluded),
+  the retrieval score as a cross-stage ranker feature, listwise-loss variant grid selected on the
+  valid split, score fusion — **+48% cascade NDCG@10** over the poisoned baseline, with the
+  failure modes (reverse label leakage, residual selection bias) documented.
+- ✅ **Week 8 — VLM item understanding**: Qwen2.5-VL structured profiles for every item (100% valid
+  JSON, 4 h/25.6K items), profile embeddings as a third content block; the ablation honestly shows
+  +1.5% overall recall and a cold-start null on this text-rich category.
+- ✅ **Week 9 — Semantic IDs**: RQ-VAE codes (100% codebook utilization) as an item-ID replacement —
+  **+46% cold-start retrieval** — plus a TIGER-style generative-retrieval demo with constrained
+  trie decoding.
+- ▶ **Week 10 — Scale run**: the same configs over Beauty_and_Personal_Care (729K users · 208K
+  items · 6.6M interactions), category-scoped paths, per-stage bottleneck notes.
 
 ### Week 2 retrieval — test ablation (temporal leave-last-out)
 
@@ -81,8 +98,13 @@ make week1-dev              # fast capped run (~200k reviews, 500 images) — pr
 make week1                  # full Video_Games build (all reviews + items)
 make week2                  # train two-towers + retrieval ablation (needs Week-1 artifacts)
 make week3                  # train ranker (DIN+DCN-v2+MMoE) + ablation
-make week4                  # pre-ranker distill + cascade diagnosis + MMR/DPP diversity
+make week4                  # cascade fix: variant grid + fusion + pre-ranker distill + diversity
+make week8                  # VLM item profiles (Qwen2.5-VL) + encode + feature-source ablation
+make week9                  # RQ-VAE semantic IDs + SID-vs-ID ablation (+ `vlmrec tiger-demo`)
 make serve                  # run the FastAPI cascade (http://localhost:8000, ~16ms p99)
+
+# scale profile (Beauty_and_Personal_Care, category-scoped paths):
+uv run vlmrec <stage> --config configs/scale.yaml
 ```
 
 Run individual stages:
@@ -109,7 +131,8 @@ configs/                 # YAML config (dataset, filtering, splits, embeddings)
 src/vlmrec/
   data/                  # download, build_interactions, download_images
   features/              # encode_text (sentence-transformers), encode_image (CLIP)
-  retrieval/ ranking/ rerank/ serving/ mlops/  # Weeks 2–6
+  retrieval/ ranking/ rerank/ serving/ mlops/  # Weeks 2–7 + MLOps
+  vlm/ sid/              # Week 8 (VLM item profiles) · Week 9 (RQ-VAE semantic IDs + TIGER demo)
   config.py paths.py utils.py cli.py
 tests/                   # pure-logic smoke tests (no network/GPU needed)
 data/                    # artifacts (gitignored): raw/ processed/ images/ embeddings/
