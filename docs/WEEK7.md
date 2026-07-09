@@ -68,6 +68,11 @@ make serve        # serves the cascade-consistent ranker automatically
 ```
 
 ## Honest caveats
+- **Variant ranking is feature-set-dependent.** Re-running the grid on the Week-8 fused features
+  (1281-d) flipped the winner to `hardneg_clean` (the score-feature variants dropped to 0.045 /
+  0.031); the valid-split selection caught it automatically and served the right checkpoint with
+  the right sidecar metadata. Fixed model choices rot when the features change — automate the
+  selection.
 - Offline cascade NDCG on retriever-selected candidates is **retrieval-favoring** — the candidate
   set was chosen by the retriever's own similarity. The unbiased comparison needs online traffic
   or counterfactual estimators.
