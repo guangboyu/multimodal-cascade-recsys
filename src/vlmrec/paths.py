@@ -86,5 +86,7 @@ class Paths:
     def has_image_npy(self) -> Path:
         return self.embeddings / "has_image.npy"
 
-    def image_path(self, item_idx: int) -> Path:
-        return self.images / f"{item_idx}.jpg"
+    def image_file(self, parent_asin: str) -> Path:
+        # keyed by the STABLE catalog id — item_idx is re-assigned on every build, and an
+        # idx-keyed cache silently pairs wrong images after a rebuild (docs/PITFALLS.md #5)
+        return self.images / f"{parent_asin}.jpg"

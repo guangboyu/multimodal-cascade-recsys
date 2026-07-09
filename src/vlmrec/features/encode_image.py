@@ -26,7 +26,9 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
     import torch
 
     device = pick_device(str(cfg.device))
-    n_items = pl.read_parquet(paths.item_map_parquet).height
+    item_map = pl.read_parquet(paths.item_map_parquet).sort("item_idx")
+    n_items = item_map.height
+    asin_of = item_map.get_column("parent_asin").to_list()  # row i == item_idx i
 
     with timer(log, f"encode image [{cfg.image_emb.model}/{cfg.image_emb.pretrained}] on {device}"):
         model, _, preprocess = open_clip.create_model_and_transforms(
@@ -46,7 +48,7 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
 
         # decode+preprocess in DataLoader workers — the single-threaded PIL loop was the
         # throughput bottleneck at scale (GPU idle while one core decoded JPEGs)
-        present = [i for i in range(n_items) if paths.image_path(i).exists()]
+        present = [i for i in range(n_items) if paths.image_file(asin_of[i]).exists()]
 
         class _ImgDataset(torch.utils.data.Dataset):
             def __len__(self):
@@ -55,7 +57,7 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
             def __getitem__(self, j):
                 item_idx = present[j]
                 try:
-                    img = Image.open(paths.image_path(item_idx)).convert("RGB")
+                    img = Image.open(paths.image_file(asin_of[item_idx])).convert("RGB")
                 except Exception:  # noqa: BLE001 - corrupt file -> treat as missing
                     return item_idx, None
                 return item_idx, preprocess(img)

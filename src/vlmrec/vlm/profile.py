@@ -110,7 +110,7 @@ def build_prompt_rows(paths: Paths, max_desc_chars: int = 800) -> list[dict]:
     for r in merged.iter_rows(named=True):
         title = _field_text(r.get("title"))
         desc = _field_text(r.get("description"))[:max_desc_chars]
-        img = paths.image_path(int(r["item_idx"]))
+        img = paths.image_file(r["parent_asin"])
         rows.append(
             {
                 "item_idx": int(r["item_idx"]),

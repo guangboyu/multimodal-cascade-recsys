@@ -84,14 +84,20 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
 
         order = _size_order(str(cfg.images.size))
         recs = []
-        for row in meta.select(["item_idx", "images"]).iter_rows(named=True):
+        for row in meta.select(["item_idx", "parent_asin", "images"]).iter_rows(named=True):
             images = row["images"]
             if isinstance(images, str):  # stored JSON-encoded by download.py
                 try:
                     images = json.loads(images)
                 except json.JSONDecodeError:
                     images = None
-            recs.append({"item_idx": row["item_idx"], "url": extract_url(images, order)})
+            recs.append(
+                {
+                    "item_idx": row["item_idx"],
+                    "parent_asin": row["parent_asin"],
+                    "url": extract_url(images, order),
+                }
+            )
         url_df = pl.DataFrame(recs).filter(pl.col("url").is_not_null()).sort("item_idx")
 
         cap = cfg.images.max_images
@@ -107,7 +113,7 @@ def run(cfg: DictConfig, paths: Paths) -> dict:
                     _download_one,
                     j["item_idx"],
                     j["url"],
-                    paths.image_path(j["item_idx"]),
+                    paths.image_file(j["parent_asin"]),
                     int(cfg.images.timeout),
                     int(cfg.images.retries),
                 )
