@@ -1,0 +1,124 @@
+# VLM-Rec — Week-10 scale profile: Beauty_and_Personal_Care (~23.9M raw reviews).
+# Run any stage against it with:  uv run vlmrec <stage> --config configs/scale.yaml
+# Paths are category-scoped so the Video_Games artifacts under data/ stay untouched.
+
+seed: 42
+device: auto
+
+paths:
+  root: "."
+  data: data/Beauty_and_Personal_Care
+  raw: data/Beauty_and_Personal_Care/raw
+  processed: data/Beauty_and_Personal_Care/processed
+  images: data/Beauty_and_Personal_Care/images
+  embeddings: data/Beauty_and_Personal_Care/embeddings
+
+dataset:
+  hf_repo: McAuley-Lab/Amazon-Reviews-2023
+  category: Beauty_and_Personal_Care
+  max_reviews: null       # decision rule: cap only if post-5-core items > 300K after k_core=7
+  positive_rating: 4.0
+
+filtering:
+  dedup: true
+  k_core: 5               # raise to 7 if post-filter items > 300K (keeps VLM inference <= 2 days)
+  max_iters: 20
+
+split:
+  scheme: leave_last_out
+  min_seq_len: 3
+
+images:
+  enabled: true
+  max_images: null
+  size: large
+  num_workers: 32         # ~10x item count: bandwidth-bound, more concurrency
+  timeout: 10
+  retries: 2
+
+text:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  fields: [title, description, features]
+  max_chars: 1000
+  batch_size: 256
+
+features:
+  sources: [text, image, vlm]
+
+vlm:
+  model: Qwen/Qwen2.5-VL-3B-Instruct  # 3B at scale: ~200K items in ~14h vs ~35h for the 7B
+  backend: transformers
+  fallback_model: Qwen/Qwen2.5-VL-3B-Instruct
+  max_new_tokens: 320
+  temperature: 0.0
+  max_pixels: 589824
+  gpu_memory_utilization: 0.90
+  shard_size: 5000
+  max_desc_chars: 800
+
+image_emb:
+  model: ViT-B-32
+  pretrained: laion2b_s34b_b79k
+  batch_size: 256
+  num_workers: 8
+
+retrieval:
+  feature_mode: content
+  out_dim: 128
+  hidden: [256]
+  temperature: 0.05
+  epochs: 10
+  batch_size: 4096
+  lr: 0.002
+  eval_every: 2           # eval over ~1M users is the slow part at scale
+  ks: [10, 50, 100, 500]
+
+ranking:
+  epochs: 3
+  batch_size: 2048
+  lr: 0.001
+  n_neg_train: 4
+  n_neg_eval: 100
+  eval_user_sample: 100000  # GAUC over a 100K-user sample instead of all users
+  max_seq_len: 30
+  d_model: 128
+  n_tasks: 2
+  use_multimodal: true
+  use_din: true
+  use_cross: true
+  use_mmoe: true
+
+rerank:
+  cand_k: 200
+  hard_neg_frac: 0.5
+  prerank_epochs: 2
+  mmr_lambda: 0.7
+  final_k: 20
+
+sid:
+  levels: 3
+  codebook_size: 256
+  latent_dim: 64
+  hidden: [512, 256]
+  beta: 0.25
+  epochs: 300
+  batch_size: 2048
+  lr: 0.001
+
+tiger:
+  d_model: 128
+  n_layers: 4
+  n_heads: 4
+  max_hist: 20
+  epochs: 5
+  batch_size: 256
+  lr: 0.001
+  beam: 20
+  eval_users: 10000
+
+serving:
+  ranker_ckpt: data/Beauty_and_Personal_Care/rerank/ranker_cascade.pt
+  k_retrieve: ${rerank.cand_k}
+  k_prerank: 50
+  use_onnx: false
+  index: hnsw             # ANN becomes operative (not decorative) at ~200K items
