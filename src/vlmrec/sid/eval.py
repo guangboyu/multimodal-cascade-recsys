@@ -85,6 +85,7 @@ def run(cfg, paths: Paths) -> dict:
             lr=float(rk.lr),
             n_neg=int(rk.n_neg_train),
             n_neg_eval=int(rk.n_neg_eval),
+            eval_user_sample=rk.get("eval_user_sample"),
             d_model=int(rk.d_model),
             n_tasks=int(rk.n_tasks),
             max_seq_len=int(rk.max_seq_len),
@@ -104,6 +105,7 @@ def run(cfg, paths: Paths) -> dict:
             n_neg=int(rk.n_neg_eval),
             user_subset=rcold,
             ret_ui=ret_ui,
+            max_users=rk.get("eval_user_sample"),
         )
         rankers[name] = {
             "click_GAUC": rmetrics["click_GAUC"],
