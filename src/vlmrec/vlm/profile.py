@@ -172,11 +172,12 @@ class _VllmBackend:
 class _TransformersBackend:
     name = "transformers"
 
-    def __init__(self, v, model_id: str | None = None, batch_size: int = 8):
+    def __init__(self, v, model_id: str | None = None, batch_size: int | None = None):
         import torch
         from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
         model_id = model_id or str(v.model)
+        batch_size = batch_size or int(v.get("batch_size", 8))  # size to the model's VRAM headroom
         self.name = f"transformers:{model_id}"
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, device_map="cuda"

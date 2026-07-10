@@ -55,6 +55,7 @@ vlm:
   gpu_memory_utilization: 0.90
   shard_size: 5000
   max_desc_chars: 800
+  batch_size: 24            # 3B at batch 8 left the 4090 at 61% util / 12GB — batch up
 
 image_emb:
   model: ViT-B-32
