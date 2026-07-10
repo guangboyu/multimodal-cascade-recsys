@@ -20,6 +20,10 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
 
 
+def _r4(x: np.ndarray) -> list[float]:
+    return [round(float(v), 4) for v in x]
+
+
 @torch.no_grad()
 def _score(model, reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarray) -> np.ndarray:
     cand_t = torch.tensor(cand)
@@ -39,6 +43,21 @@ def _score_ranker(reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarra
     return reg.onnx.run(None, feeds)[0]
 
 
+def stage_journey(stages: dict, final_items: list[int]) -> list[dict]:
+    """Per final item, its rank at every cascade stage (1-based; None = not present).
+
+    Pure dict/list logic so the demo UI can plot how the ranker re-orders retrieval and
+    what diversity re-shuffles — the whole cascade story in one table.
+    """
+    ranks = {
+        name: {int(it): r + 1 for r, it in enumerate(st["items"])} for name, st in stages.items()
+    }
+    return [
+        {"item_idx": int(it), **{name: ranks[name].get(int(it)) for name in stages}}
+        for it in final_items
+    ]
+
+
 @torch.no_grad()
 def recommend(
     reg: Registry,
@@ -48,6 +67,7 @@ def recommend(
     k_final=20,
     diversity="mmr",
     mmr_lambda=0.7,
+    explain: bool = False,
 ) -> dict:
     d = reg.d
     lat: dict[str, float] = {}
@@ -67,6 +87,9 @@ def recommend(
     cand = idx[0][keep].astype(np.int64)
     ret = sc[0][keep].astype(np.float32)
     lat["retrieve_ms"] = (time.perf_counter() - t0) * 1000
+    stages: dict[str, dict] = {}
+    if explain:  # FAISS returns score-sorted, so cand IS the retrieval order
+        stages["retrieval"] = {"items": cand.tolist(), "scores": _r4(ret)}
 
     # 2. pre-rank (lightweight) cut to k_prerank
     t0 = time.perf_counter()
@@ -74,6 +97,8 @@ def recommend(
         ps = _score(reg.prerank, reg, user_idx, cand, ret)[:, 0]
         top = np.argsort(-ps)[:k_prerank]
         cand, ret = cand[top], ret[top]
+        if explain:
+            stages["prerank"] = {"items": cand.tolist(), "scores": _r4(_sigmoid(ps[top]))}
     lat["prerank_ms"] = (time.perf_counter() - t0) * 1000
 
     # 3. rank (heavy DIN + DCN-v2 + MMoE)
@@ -86,6 +111,14 @@ def recommend(
     # 4. post-process: fuse + diversity
     t0 = time.perf_counter()
     score = fuse_scores(pclick, psat)
+    if explain:
+        by_score = np.argsort(-score)
+        stages["rank"] = {
+            "items": cand[by_score].tolist(),
+            "scores": _r4(score[by_score]),
+            "pclick": _r4(pclick[by_score]),
+            "psat": _r4(psat[by_score]),
+        }
     emb = reg.item_e[cand]
     if diversity == "mmr":
         order = mmr(score, emb, k_final, mmr_lambda)
@@ -97,9 +130,14 @@ def recommend(
     lat["postprocess_ms"] = (time.perf_counter() - t0) * 1000
 
     lat["total_ms"] = round(sum(lat.values()), 2)
-    return {
+    res = {
         "user_idx": int(user_idx),
         "items": [int(x) for x in final],
         "scores": [round(float(score[o]), 4) for o in order],
         "latency_ms": {k: round(v, 2) for k, v in lat.items()},
     }
+    if explain:
+        stages["final"] = {"items": res["items"], "scores": res["scores"]}
+        res["stages"] = stages
+        res["journey"] = stage_journey(stages, res["items"])
+    return res

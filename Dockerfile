@@ -12,9 +12,10 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY configs ./configs
 
-# Install runtime + serving + retrieval (FAISS) deps. (torch resolves to the pinned CUDA build,
-# which runs on CPU when no GPU is present — fine for serving; swap to a CPU wheel to slim the image.)
-RUN uv sync --extra serving --extra retrieval --no-dev
+# Install runtime + serving + retrieval (FAISS) + demo (Streamlit) deps. (torch resolves to the
+# pinned CUDA build, which runs on CPU when no GPU is present — fine for serving; swap to a CPU
+# wheel to slim the image.)
+RUN uv sync --extra serving --extra retrieval --extra demo --no-dev
 
-EXPOSE 8000
+EXPOSE 8000 8501
 CMD ["uv", "run", "uvicorn", "vlmrec.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]

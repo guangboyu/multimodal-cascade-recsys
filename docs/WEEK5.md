@@ -12,6 +12,10 @@ into a system.
 - **`app.py`** — **FastAPI** app: `GET /health`, `GET /recommend?user_id=&k=&diversity=mmr|dpp|none`.
 - **`export_onnx.py`** — exports the ranker to **ONNX** (feature tables baked in) and verifies parity.
 - **`Dockerfile`** + **`docker-compose.yml`** — containerized serving (data mounted read-only).
+- **`catalog.py` + `demo_app.py`** *(added later)* — read-only metadata endpoints (`/item`, `/user`,
+  `/similar`, `/users/sample`, static `/images`, `/recommend?explain=true` stage traces) plus a
+  **Streamlit** demo UI over them (`make demo`). The scoring path is untouched — enrichment happens
+  only when a caller asks for it.
 
 ## Latency (CPU, warm, 200-user sample)
 
@@ -34,8 +38,9 @@ Ranker → `data/serving/ranker.onnx` (100 MB, tables baked in), ONNX Runtime vs
 ```bash
 make serve        # uvicorn at http://localhost:8000
 curl "http://localhost:8000/recommend?user_id=42&k=10&diversity=dpp"
+make demo         # Streamlit UI at http://localhost:8501 (talks to the API over HTTP)
 make export-onnx  # export + verify the ONNX ranker
-docker compose up --build   # containerized (mounts ./data)
+docker compose up --build   # containerized: api on :8000 + demo on :8501 (mounts ./data)
 ```
 
 ## Notes / next (Week 6)

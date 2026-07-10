@@ -30,6 +30,22 @@ production systems allocate complexity.
 **📊 Headline results & resume bullets → [`docs/RESULTS.md`](docs/RESULTS.md).** Per-stage write-ups
 ([`docs/WEEK1..6.md`](docs/)) and an honest bug log ([`docs/PITFALLS.md`](docs/PITFALLS.md)) included.
 
+## Interactive demo
+
+A Streamlit UI over the live serving API — pick a user, watch the cascade build their feed:
+
+```bash
+make serve   # FastAPI cascade on :8000
+make demo    # Streamlit UI on :8501  (or: docker compose up)
+```
+
+It shows, per request: the user's purchase history and their **held-out real next purchase**; the
+funnel (200 retrieved → 50 pre-ranked → ranked → top-k after MMR/DPP) with per-stage millisecond
+latency; how each stage re-ordered the candidates; and an item inspector with the Qwen2.5-VL
+structured profile plus item-tower nearest neighbours. The whole thing runs off five read-only
+metadata endpoints (`/user`, `/item`, `/similar`, `/users/sample`, `/recommend?explain=true`) —
+the scoring path itself is untouched.
+
 ## Status
 
 - ✅ **Week 1 — Data + feature foundation**: download, 5-core filtering, temporal leave-last-out
@@ -106,6 +122,7 @@ make week4                  # cascade fix: variant grid + fusion + pre-ranker di
 make week8                  # VLM item profiles (Qwen2.5-VL) + encode + feature-source ablation
 make week9                  # RQ-VAE semantic IDs + SID-vs-ID ablation (+ `vlmrec tiger-demo`)
 make serve                  # run the FastAPI cascade (http://localhost:8000, ~16ms p99)
+make demo                   # Streamlit demo UI over the API (http://localhost:8501)
 
 # scale profile (Beauty_and_Personal_Care, category-scoped paths):
 uv run vlmrec <stage> --config configs/scale.yaml

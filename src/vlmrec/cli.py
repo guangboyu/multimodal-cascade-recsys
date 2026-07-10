@@ -33,6 +33,7 @@ COMMANDS = [
     "tiger-demo",
     "export-onnx",
     "log-runs",
+    "demo",
 ]
 
 
@@ -115,6 +116,37 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .mlops import log_runs
 
         log_runs.run(cfg, paths)
+    elif cmd == "demo":
+        _demo(cfg)
+
+
+def _demo(cfg) -> None:
+    """Launch the Streamlit UI (talks to the serving API from cfg.demo over HTTP)."""
+    import importlib.util
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path as _P
+
+    if importlib.util.find_spec("streamlit") is None:
+        raise SystemExit("streamlit is not installed — run `uv sync --all-extras` first")
+    app_file = _P(__file__).parent / "serving" / "demo_app.py"
+    env = {**os.environ, "VLMREC_API": str(cfg.demo.api)}
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "streamlit",
+            "run",
+            str(app_file),
+            "--server.port",
+            str(cfg.demo.port),
+            "--server.headless",
+            "true",
+        ],
+        env=env,
+        check=False,
+    )
 
 
 def _week1(cfg, paths: Paths, log) -> None:

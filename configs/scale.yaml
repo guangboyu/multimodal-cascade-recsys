@@ -123,3 +123,7 @@ serving:
   k_prerank: 50
   use_onnx: false
   index: hnsw             # ANN becomes operative (not decorative) at ~200K items
+
+demo:
+  api: http://localhost:8000
+  port: 8501

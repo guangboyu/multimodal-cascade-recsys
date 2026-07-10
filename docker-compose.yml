@@ -1,5 +1,5 @@
-# Serving the VLM-Rec cascade. `data/` (trained artifacts) is mounted read-only.
-# Week 6 can extend this with redis (cache), prometheus + grafana (monitoring).
+# Serving the VLM-Rec cascade + the Streamlit demo UI. `data/` (trained artifacts) is mounted
+# read-only. Week 6 can extend this with redis (cache), prometheus + grafana (monitoring).
 services:
   api:
     build: .
@@ -14,3 +14,16 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 120s      # registry load (features + checkpoints) takes a while on cold start
+
+  demo:
+    build: .
+    command: ["uv", "run", "streamlit", "run", "src/vlmrec/serving/demo_app.py",
+              "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    ports:
+      - "8501:8501"
+    environment:
+      - VLMREC_API=http://api:8000   # UI fetches everything (incl. images) through the API
+    depends_on:
+      api:
+        condition: service_healthy

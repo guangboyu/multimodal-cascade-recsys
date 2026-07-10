@@ -42,6 +42,7 @@ mlops = ["mlflow>=2.12"]                                          # Week 6
 # transformers imports (see docs/PITFALLS.md). On a machine with a current driver, install vllm
 # manually and set vlm.backend=vllm for ~3-6x throughput.
 vlm = ["transformers>=4.49", "qwen-vl-utils>=0.0.8", "accelerate>=0.30"]
+demo = ["streamlit>=1.30"]                                        # Streamlit UI over the serving API
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.4"]
