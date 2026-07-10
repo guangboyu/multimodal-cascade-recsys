@@ -49,6 +49,8 @@ representation carrying most of the quality.
 
 ## Interactive demo
 
+![Replaying a real user through the live cascade: history, funnel, recommendations, and the VLM item inspector](docs/demo.gif)
+
 A Streamlit UI over the live serving API. Pick a user and watch the cascade build their feed:
 
 ```bash
