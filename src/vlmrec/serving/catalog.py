@@ -37,6 +37,18 @@ def display_title(title: str | None, parent_asin: str, max_chars: int = 90) -> s
     return t if len(t) <= max_chars else t[: max_chars - 1] + "…"
 
 
+def search_titles(titles_lc: list[str], query: str) -> list[int]:
+    """Indices of titles containing every whitespace-separated query token (AND semantics).
+
+    A linear scan is deliberate: 25K–200K lowercase titles cost single-digit ms per request,
+    which is nowhere near worth an inverted index for a demo endpoint.
+    """
+    tokens = [t for t in query.lower().split() if t]
+    if not tokens:
+        return []
+    return [i for i, t in enumerate(titles_lc) if all(tok in t for tok in tokens)]
+
+
 @dataclass
 class Catalog:
     paths: Paths
@@ -47,6 +59,7 @@ class Catalog:
     rating_n: list[int]
     store: list[str]
     profile_raw: list[str]  # VLM profile JSON per item ("" when absent)
+    _title_lc: list[str] | None = None  # built on first search
 
     @property
     def n_items(self) -> int:
@@ -80,6 +93,14 @@ class Catalog:
             "store": self.store[i],
             "profile": parse_profile(self.profile_raw[i]),
         }
+
+    def search(self, query: str, k: int = 12) -> list[dict]:
+        """Title search, most-reviewed first (popularity is the sanest demo-facing tiebreak)."""
+        if self._title_lc is None:
+            self._title_lc = [t.lower() for t in self.title]
+        hits = search_titles(self._title_lc, query)
+        hits.sort(key=lambda i: -self.rating_n[i])
+        return [self.summary(i) for i in hits[:k]]
 
 
 def load_catalog(paths: Paths) -> Catalog:

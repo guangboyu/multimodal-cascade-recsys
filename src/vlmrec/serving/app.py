@@ -16,11 +16,12 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Histogram, make_asgi_app
+from pydantic import BaseModel, Field
 
 from ..paths import Paths
 from .catalog import load_catalog
 from .registry import load_registry
-from .service import recommend
+from .service import recommend, recommend_session
 
 _state: dict = {}
 REQUESTS = Counter("vlmrec_requests_total", "recommend requests", ["diversity"])
@@ -86,6 +87,11 @@ def rec(
         mmr_lambda=float(reg.cfg.rerank.mmr_lambda),
         explain=explain,
     )
+    return _finish_rec(res, diversity, enrich)
+
+
+def _finish_rec(res: dict, diversity: str, enrich: bool) -> dict:
+    """Shared tail of both recommend flavours: metrics + optional metadata enrichment."""
     REQUESTS.labels(diversity=diversity).inc()
     for stage, ms in res["latency_ms"].items():
         LATENCY.labels(stage=stage).observe(ms)
@@ -95,6 +101,42 @@ def rec(
             {**cat.summary(i), "score": s} for i, s in zip(res["items"], res["scores"], strict=True)
         ]
     return res
+
+
+class SessionRequest(BaseModel):
+    """An ad-hoc behaviour sequence — 'recommend as if a user had interacted with these'."""
+
+    items: list[int] = Field(..., min_length=1, max_length=100, description="oldest first")
+    k: int = Field(20, ge=1, le=100)
+    diversity: str = Field("mmr", pattern="^(mmr|dpp|none)$")
+    explain: bool = False
+    enrich: bool = False
+
+
+@app.post("/recommend/session")
+def rec_session(req: SessionRequest):
+    """The same live cascade, for a synthetic session instead of a logged user — possible
+    because the content-mode user tower and the sequence-based ranker never need a user id."""
+    reg = _state["registry"]
+    for i in req.items:
+        _check_item(i)
+    res = recommend_session(
+        reg,
+        req.items,
+        k_retrieve=int(reg.cfg.serving.k_retrieve),
+        k_prerank=int(reg.cfg.serving.k_prerank),
+        k_final=req.k,
+        diversity=req.diversity,
+        mmr_lambda=float(reg.cfg.rerank.mmr_lambda),
+        explain=req.explain,
+    )
+    return _finish_rec(res, req.diversity, req.enrich)
+
+
+@app.get("/search")
+def search(q: str = Query(..., min_length=2), k: int = Query(12, ge=1, le=50)):
+    """Title search (AND over tokens, most-reviewed first) — feeds the demo's session builder."""
+    return _state["catalog"].search(q, k)
 
 
 @app.get("/item/{item_idx}")

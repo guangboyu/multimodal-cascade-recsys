@@ -13,9 +13,12 @@ into a system.
 - **`export_onnx.py`** — exports the ranker to **ONNX** (feature tables baked in) and verifies parity.
 - **`Dockerfile`** + **`docker-compose.yml`** — containerized serving (data mounted read-only).
 - **`catalog.py` + `demo_app.py`** *(added later)* — read-only metadata endpoints (`/item`, `/user`,
-  `/similar`, `/users/sample`, static `/images`, `/recommend?explain=true` stage traces) plus a
-  **Streamlit** demo UI over them (`make demo`). The scoring path is untouched — enrichment happens
-  only when a caller asks for it.
+  `/similar`, `/search`, `/users/sample`, static `/images`, `/recommend?explain=true` stage traces)
+  plus a **Streamlit** demo UI over them (`make demo`). The scoring path is untouched — enrichment
+  happens only when a caller asks for it.
+- **`POST /recommend/session`** — the identical cascade for an ad-hoc item history ("build your own
+  taste" in the demo). Possible because serving is user-id-free: the content-mode user tower pools
+  item content and the ranker reads the behaviour sequence, so unseen sessions need no retraining.
 
 ## Latency (CPU, warm, 200-user sample)
 

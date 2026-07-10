@@ -39,12 +39,20 @@ make serve   # FastAPI cascade on :8000
 make demo    # Streamlit UI on :8501  (or: docker compose up)
 ```
 
-It shows, per request: the user's purchase history and their **held-out real next purchase**; the
-funnel (200 retrieved → 50 pre-ranked → ranked → top-k after MMR/DPP) with per-stage millisecond
-latency; how each stage re-ordered the candidates; and an item inspector with the Qwen2.5-VL
-structured profile plus item-tower nearest neighbours. The whole thing runs off five read-only
-metadata endpoints (`/user`, `/item`, `/similar`, `/users/sample`, `/recommend?explain=true`) —
-the scoring path itself is untouched.
+Two modes, same live cascade:
+
+- **Replay a real user** — their logged history next to their **held-out real next purchase**; the
+  funnel (200 retrieved → 50 pre-ranked → ranked → top-k after MMR/DPP) with per-stage millisecond
+  latency; how each stage re-ordered the candidates; and an item inspector with the Qwen2.5-VL
+  structured profile plus item-tower nearest neighbours.
+- **Build your own taste** — search the catalog, add a few items, and the cascade builds a feed for
+  that brand-new session in ~10 ms. Works with zero retraining because the online path is
+  user-id-free: the user embedding is pooled item content and the ranker personalizes via the
+  behaviour sequence (`POST /recommend/session`) — the same property that powers the cold-start
+  results below.
+
+Backed by read-only metadata endpoints (`/user`, `/item`, `/similar`, `/search`, `/users/sample`,
+`/recommend?explain=true` stage traces) — the scoring path itself is untouched.
 
 ## Status
 

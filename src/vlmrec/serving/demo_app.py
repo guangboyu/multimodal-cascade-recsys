@@ -1,5 +1,7 @@
 """Streamlit demo over the serving API: pick a user, watch the cascade produce their feed.
 
+Two modes: replay a logged dataset user, or build a synthetic session ("your own taste") and
+watch the same cascade react — the online path is user-id-free, so both hit identical models.
 Deliberately self-contained — it talks to FastAPI over HTTP only (no vlmrec imports, no model
 code), so it runs anywhere the API is reachable:  ``make demo``  or
 ``uv run streamlit run src/vlmrec/serving/demo_app.py`` (API base via $VLMREC_API).
@@ -7,6 +9,7 @@ code), so it runs anywhere the API is reachable:  ``make demo``  or
 
 from __future__ import annotations
 
+import json
 import os
 import random
 
@@ -34,6 +37,22 @@ STAGE_LABEL = {
 def api_get(path: str, **params):
     try:
         r = requests.get(f"{API}{path}", params=params, timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException:
+        return None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def api_post(path: str, payload: str):
+    """POST with the JSON body passed as a string so st.cache_data can key on it."""
+    try:
+        r = requests.post(
+            f"{API}{path}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=60,
+        )
         r.raise_for_status()
         return r.json()
     except requests.RequestException:
@@ -174,80 +193,16 @@ def profile_panel(detail: dict):
         st.caption(f"Quality cues: {prof['quality_cues']}")
 
 
-# --- page ------------------------------------------------------------------------------------
+# --- sections (shared by both modes) ---------------------------------------------------------
 
 
-def main():
-    st.set_page_config(page_title="VLM-Rec demo", page_icon="🎮", layout="wide")
-    st.title("🎮 VLM-Rec — multimodal cascade, live")
-
-    health = api_get("/health")
-    if health is None:
-        st.error(f"Serving API not reachable at `{API}` — start it with `make serve`.")
-        st.stop()
-    st.caption(
-        f"{health['n_items']:,} items · {health['n_users']:,} users · "
-        "candidate generation → pre-rank → rank → diversity, every request scored live"
-    )
-
-    # sidebar: pick a user + request knobs
-    sample = api_get("/users/sample", n=60, min_history=8, seed=7) or []
-    with st.sidebar:
-        st.header("Request")
-        if st.button("🎲 Surprise me", use_container_width=True) and sample:
-            st.session_state["uid"] = random.choice(sample)["user_idx"]
-        options = [u["user_idx"] for u in sample]
-        hist = {u["user_idx"]: u["n_history"] for u in sample}
-        default = st.session_state.get("uid", options[0] if options else 0)
-        if default not in options:
-            options = [default, *options]
-        uid = st.selectbox(
-            "User",
-            options,
-            index=options.index(default),
-            format_func=lambda u: f"user {u} · {hist.get(u, '?')} items",
-        )
-        uid = int(st.number_input("…or any user_idx", 0, health["n_users"] - 1, uid))
-        k = st.slider("Final list size (k)", 4, 30, 12)
-        diversity = st.radio("Diversity re-rank", ["mmr", "dpp", "none"], horizontal=True)
-        st.caption(
-            "MMR/DPP trade a little relevance for variety in the final list — "
-            "flip it and watch near-duplicates drop out."
-        )
-
-    rec = api_get("/recommend", user_id=uid, k=k, diversity=diversity, explain=True, enrich=True)
-    prof = api_get(f"/user/{uid}", n=6)
-    if rec is None or prof is None:
-        st.error("recommend call failed — check the API logs")
-        st.stop()
+def render_cascade(rec: dict, hit_idx: int | None):
     stages, lat = rec["stages"], rec["latency_ms"]
-    test_it = prof.get("test_item")
-    hit_idx = test_it["item_idx"] if test_it else None
-
-    # 1 · the user
-    st.subheader("1 · Who we're recommending for")
-    left, right = st.columns([4, 1])
-    with left:
-        st.markdown(f"Recent history — **{prof['n_history']} interactions**, newest first")
-        card_grid(prof["history"], lambda it: [meta_line(it)], per_row=6)
-    with right:
-        st.markdown("**Held-out next purchase**")
-        if test_it:
-            item_card(st.container(), test_it, [meta_line(test_it)])
-        else:
-            st.caption("none for this user")
-
-    # 2 · the cascade run
     st.subheader("2 · The cascade run")
     cols = st.columns(5)
     counts = [len(stages[s]["items"]) if s in stages else None for s in STAGES]
+    key = {"retrieval": "retrieve", "prerank": "prerank", "rank": "rank", "final": "postprocess"}
     for col, s, c in zip(cols, STAGES, counts, strict=False):  # 5th column = the total
-        key = {
-            "retrieval": "retrieve",
-            "prerank": "prerank",
-            "rank": "rank",
-            "final": "postprocess",
-        }
         col.metric(STAGE_LABEL[s], c if c is not None else "skipped", f"{lat[key[s] + '_ms']} ms")
     cols[4].metric("end-to-end", f"{lat['total_ms']} ms", "CPU, single request")
     latency_chart(lat)
@@ -266,7 +221,8 @@ def main():
                 "(R@100 ≈ 0.21 — most single next-purchases aren't)."
             )
 
-    # 3 · the feed
+
+def render_feed(rec: dict, k: int, diversity: str):
     st.subheader(f"3 · Top-{k} recommendations ({diversity} diversity)")
     journey_by_item = {j["item_idx"]: j for j in rec["journey"]}
 
@@ -277,17 +233,18 @@ def main():
 
     card_grid(rec["results"], rec_lines, per_row=6)
 
-    # 4 · how ranks moved
+
+def render_journey(rec: dict, titles: dict[int, str], hit_idx: int | None):
     st.subheader("4 · How the stages re-ordered things")
     st.caption(
         "Each line is one final item: its rank under candidate generation, after pre-rank, "
         "after the heavy ranker, and after diversity. Crossings = the ranker disagreeing "
         "with retrieval." + (" Blue = the held-out item." if hit_idx is not None else "")
     )
-    titles = {r["item_idx"]: r["title"] for r in rec["results"]}
     journey_chart(rec["journey"], titles, hit_idx)
 
-    # 5 · item inspector
+
+def render_inspector(rec: dict, titles: dict[int, str]):
     st.subheader("5 · Item inspector — what the VLM sees")
     pick = st.selectbox(
         "Inspect a recommended item",
@@ -309,19 +266,161 @@ def main():
         st.markdown("**Customers who liked this may also like** (item-tower neighbours)")
         card_grid(sim["similar"], lambda it: [meta_line(it), f"sim {it['score']:.3f}"], per_row=6)
 
+
+def render_explainer():
     with st.expander("What am I looking at?"):
         st.markdown(
             """
 - **Candidate generation** — a two-tower model (text + image + VLM-profile features) pulls
-  ~200 candidates from a FAISS index over the full catalog, skipping items the user has seen.
+  ~200 candidates from a FAISS index over the full catalog, skipping items already interacted.
 - **Pre-ranking** — a distilled lightweight ranker cuts 200 → 50 cheaply.
 - **Ranking** — the heavy DIN + DCN-v2 + MMoE model scores click & satisfaction per item,
-  using the user's behaviour sequence and the retrieval score as a cross-stage feature.
+  using the behaviour sequence and the retrieval score as a cross-stage feature.
 - **Post-processing** — scores are fused and MMR/DPP re-ranks for diversity.
-- The held-out item is the user's **real** next purchase (temporal leave-last-out split), so
-  the banner above is an honest, per-user glimpse of offline recall.
+- **Replay mode**: the held-out item is the user's *real* next purchase (temporal
+  leave-last-out split), so the banner is an honest per-user glimpse of offline recall.
+- **Build-your-own mode**: the user embedding is pooled item content and the ranker reads the
+  behaviour *sequence*, never a user id — so a brand-new session works with zero retraining.
+  That's also the cold-start story: content pathways generalize where ID embeddings can't.
             """
         )
+
+
+# --- mode-specific section 1 -----------------------------------------------------------------
+
+
+def replay_controls(sample: list[dict], n_users: int) -> int:
+    if st.button("🎲 Surprise me", use_container_width=True) and sample:
+        st.session_state["uid"] = random.choice(sample)["user_idx"]
+    options = [u["user_idx"] for u in sample]
+    hist = {u["user_idx"]: u["n_history"] for u in sample}
+    default = st.session_state.get("uid", options[0] if options else 0)
+    if default not in options:
+        options = [default, *options]
+    uid = st.selectbox(
+        "User",
+        options,
+        index=options.index(default),
+        format_func=lambda u: f"user {u} · {hist.get(u, '?')} items",
+    )
+    return int(st.number_input("…or any user_idx", 0, n_users - 1, uid))
+
+
+def render_replay_user(prof: dict) -> int | None:
+    st.subheader("1 · Who we're recommending for")
+    test_it = prof.get("test_item")
+    left, right = st.columns([4, 1])
+    with left:
+        st.markdown(f"Recent history — **{prof['n_history']} interactions**, newest first")
+        card_grid(prof["history"], lambda it: [meta_line(it)], per_row=6)
+    with right:
+        st.markdown("**Held-out next purchase**")
+        if test_it:
+            item_card(st.container(), test_it, [meta_line(test_it)])
+        else:
+            st.caption("none for this user")
+    return test_it["item_idx"] if test_it else None
+
+
+def render_session_builder() -> list[int]:
+    st.subheader("1 · Build your taste")
+    basket: list[int] = st.session_state.setdefault("basket", [])
+    q = st.text_input(
+        "Search the catalog and add items you'd click on",
+        placeholder='try "zelda", "gaming headset", "racing wheel", "ssd" …',
+    )
+    hits = api_get("/search", q=q.strip(), k=6) if len(q.strip()) >= 2 else None
+    if hits:
+        for col, it in zip(st.columns(6), hits, strict=False):
+            item_card(col, it, [meta_line(it)])
+            if col.button("➕ add", key=f"add_{it['item_idx']}", use_container_width=True):
+                basket.append(it["item_idx"])
+                st.rerun()
+    elif hits == []:
+        st.caption("no title matches — try fewer / different words")
+
+    if basket:
+        st.markdown(f"**Your session ({len(basket)} items, oldest first):**")
+        brief = api_get("/items/brief", ids=",".join(map(str, basket))) or []
+        for pos, (col, it) in enumerate(zip(st.columns(max(len(brief), 6)), brief, strict=False)):
+            item_card(col, it, [meta_line(it)])
+            if col.button("✖ remove", key=f"rm_{pos}", use_container_width=True):
+                basket.pop(pos)
+                st.rerun()
+    else:
+        st.info(
+            "Add a few items you like — the cascade builds a feed for this brand-new "
+            "'user' live. No user id, no retraining: pooled content + your sequence."
+        )
+    return basket
+
+
+# --- page ------------------------------------------------------------------------------------
+
+
+def main():
+    st.set_page_config(page_title="VLM-Rec demo", page_icon="🎮", layout="wide")
+    st.title("🎮 VLM-Rec — multimodal cascade, live")
+
+    health = api_get("/health")
+    if health is None:
+        st.error(f"Serving API not reachable at `{API}` — start it with `make serve`.")
+        st.stop()
+    st.caption(
+        f"{health['n_items']:,} items · {health['n_users']:,} users · "
+        "candidate generation → pre-rank → rank → diversity, every request scored live"
+    )
+
+    sample = api_get("/users/sample", n=60, min_history=8, seed=7) or []
+    with st.sidebar:
+        st.header("Mode")
+        mode = st.radio(
+            "mode",
+            ["Replay a real user", "Build your own taste"],
+            label_visibility="collapsed",
+        )
+        st.header("Request")
+        k = st.slider("Final list size (k)", 4, 30, 12)
+        diversity = st.radio("Diversity re-rank", ["mmr", "dpp", "none"], horizontal=True)
+        st.caption(
+            "MMR/DPP trade a little relevance for variety in the final list — "
+            "flip it and watch near-duplicates drop out."
+        )
+        uid = None
+        if mode == "Replay a real user":
+            st.header("User")
+            uid = replay_controls(sample, health["n_users"])
+
+    if mode == "Replay a real user":
+        rec = api_get(
+            "/recommend", user_id=uid, k=k, diversity=diversity, explain=True, enrich=True
+        )
+        prof = api_get(f"/user/{uid}", n=6)
+        if rec is None or prof is None:
+            st.error("recommend call failed — check the API logs")
+            st.stop()
+        hit_idx = render_replay_user(prof)
+    else:
+        basket = render_session_builder()
+        if not basket:
+            render_explainer()
+            st.stop()
+        payload = json.dumps(
+            {"items": basket, "k": k, "diversity": diversity, "explain": True, "enrich": True},
+            sort_keys=True,
+        )
+        rec = api_post("/recommend/session", payload)
+        if rec is None:
+            st.error("session recommend call failed — check the API logs")
+            st.stop()
+        hit_idx = None
+
+    render_cascade(rec, hit_idx)
+    render_feed(rec, k, diversity)
+    titles = {r["item_idx"]: r["title"] for r in rec["results"]}
+    render_journey(rec, titles, hit_idx)
+    render_inspector(rec, titles)
+    render_explainer()
 
 
 if __name__ == "__main__":  # streamlit executes the script as __main__

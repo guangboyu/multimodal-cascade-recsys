@@ -1,7 +1,25 @@
 """Pure-logic tests for the serving/demo helpers: profile parsing, titles, stage journeys."""
 
-from vlmrec.serving.catalog import display_title, parse_profile
+from vlmrec.serving.catalog import display_title, parse_profile, search_titles
 from vlmrec.serving.service import stage_journey
+
+TITLES = [
+    "the legend of zelda: breath of the wild",
+    "zelda: tears of the kingdom",
+    "mario kart 8 deluxe",
+    "logitech racing wheel for xbox",
+]
+
+
+def test_search_titles_and_semantics():
+    assert search_titles(TITLES, "zelda") == [0, 1]
+    assert search_titles(TITLES, "zelda kingdom") == [1]  # every token must match
+    assert search_titles(TITLES, "racing wheel") == [3]
+
+
+def test_search_titles_no_hits_and_empty_query():
+    assert search_titles(TITLES, "dark souls") == []
+    assert search_titles(TITLES, "   ") == []
 
 
 def test_parse_profile_valid():

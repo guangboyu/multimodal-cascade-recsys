@@ -3,6 +3,11 @@
 Mirrors the offline stages: FAISS ANN retrieval (mask seen) -> lightweight pre-ranker cut ->
 heavy DIN/DCN/MMoE ranker -> score fusion + diversity (MMR/DPP). Returns the final item list and a
 per-stage millisecond breakdown so a latency budget can be tracked.
+
+Two entry points share the identical cascade: ``recommend`` replays a logged user;
+``recommend_session`` scores an arbitrary item history. The latter works because the online path
+is user-id-free in content mode — the user embedding is pooled item content and the ranker
+personalizes via the behaviour sequence, so an unseen "session user" is a first-class citizen.
 """
 
 from __future__ import annotations
@@ -25,18 +30,22 @@ def _r4(x: np.ndarray) -> list[float]:
 
 
 @torch.no_grad()
-def _score(model, reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarray) -> np.ndarray:
+def _score(
+    model, reg: Registry, seq_row: torch.Tensor, cand: np.ndarray, ret: np.ndarray
+) -> np.ndarray:
     cand_t = torch.tensor(cand)
-    seq_b = reg.seq_t[torch.tensor([int(user_idx)] * len(cand))]
+    seq_b = seq_row.unsqueeze(0).repeat(len(cand), 1)
     ret_t = torch.tensor(ret) if getattr(model, "use_retrieval_score", False) else None
     return model(cand_t, seq_b, reg.content, reg.cat, ret_score=ret_t).numpy()
 
 
-def _score_ranker(reg: Registry, user_idx: int, cand: np.ndarray, ret: np.ndarray) -> np.ndarray:
+def _score_ranker(
+    reg: Registry, seq_row: torch.Tensor, cand: np.ndarray, ret: np.ndarray
+) -> np.ndarray:
     """Heavy-ranker logits — ONNX Runtime when enabled, torch otherwise (same numbers)."""
     if reg.onnx is None:
-        return _score(reg.ranker, reg, user_idx, cand, ret)
-    seq = reg.seq_t[torch.tensor([int(user_idx)] * len(cand))].numpy()
+        return _score(reg.ranker, reg, seq_row, cand, ret)
+    seq = seq_row.unsqueeze(0).repeat(len(cand), 1).numpy()
     feeds = {"cand": cand, "seq": seq}
     if any(i.name == "ret_score" for i in reg.onnx.get_inputs()):
         feeds["ret_score"] = ret.astype(np.float32)
@@ -59,27 +68,26 @@ def stage_journey(stages: dict, final_items: list[int]) -> list[dict]:
 
 
 @torch.no_grad()
-def recommend(
+def _run_cascade(
     reg: Registry,
-    user_idx: int,
-    k_retrieve=200,
-    k_prerank=50,
-    k_final=20,
-    diversity="mmr",
-    mmr_lambda=0.7,
-    explain: bool = False,
+    ue: torch.Tensor,
+    seq_row: torch.Tensor,
+    seen: set[int],
+    t0: float,
+    k_retrieve: int,
+    k_prerank: int,
+    k_final: int,
+    diversity: str,
+    mmr_lambda: float,
+    explain: bool,
 ) -> dict:
-    d = reg.d
+    """The shared cascade body. ``t0`` was taken before the user embedding was built so
+    retrieve_ms keeps its historical meaning (embed + ANN search)."""
     lat: dict[str, float] = {}
 
     # 1. retrieval (FAISS ANN), drop already-seen items; keep the scores — they ride along
     #    as the ranker's cross-stage feature (same dot products the ranker saw in training)
-    t0 = time.perf_counter()
-    ue = reg.tt.user_embeddings_eval(
-        torch.tensor([int(user_idx)]), reg.user_sum, reg.user_count, reg.content[:-1]
-    )
     sc, idx = reg.index.search(ue.numpy().astype("float32"), k_retrieve + 64)
-    seen = set(d.seen_items[d.seen_indptr[user_idx] : d.seen_indptr[user_idx + 1]].tolist())
     # ANN indexes (HNSW/IVF) return -1 for unfilled slots — exact flat never does
     keep = np.array(
         [j for j, c in enumerate(idx[0]) if c >= 0 and c not in seen][:k_retrieve], dtype=np.int64
@@ -94,7 +102,7 @@ def recommend(
     # 2. pre-rank (lightweight) cut to k_prerank
     t0 = time.perf_counter()
     if reg.prerank is not None and len(cand) > k_prerank:
-        ps = _score(reg.prerank, reg, user_idx, cand, ret)[:, 0]
+        ps = _score(reg.prerank, reg, seq_row, cand, ret)[:, 0]
         top = np.argsort(-ps)[:k_prerank]
         cand, ret = cand[top], ret[top]
         if explain:
@@ -103,7 +111,7 @@ def recommend(
 
     # 3. rank (heavy DIN + DCN-v2 + MMoE)
     t0 = time.perf_counter()
-    logits = _score_ranker(reg, user_idx, cand, ret)
+    logits = _score_ranker(reg, seq_row, cand, ret)
     pclick = _sigmoid(logits[:, 0])
     psat = _sigmoid(logits[:, 1]) if logits.shape[1] > 1 else np.ones_like(pclick)
     lat["rank_ms"] = (time.perf_counter() - t0) * 1000
@@ -131,7 +139,6 @@ def recommend(
 
     lat["total_ms"] = round(sum(lat.values()), 2)
     res = {
-        "user_idx": int(user_idx),
         "items": [int(x) for x in final],
         "scores": [round(float(score[o]), 4) for o in order],
         "latency_ms": {k: round(v, 2) for k, v in lat.items()},
@@ -141,3 +148,68 @@ def recommend(
         res["stages"] = stages
         res["journey"] = stage_journey(stages, res["items"])
     return res
+
+
+@torch.no_grad()
+def recommend(
+    reg: Registry,
+    user_idx: int,
+    k_retrieve=200,
+    k_prerank=50,
+    k_final=20,
+    diversity="mmr",
+    mmr_lambda=0.7,
+    explain: bool = False,
+) -> dict:
+    """Recommend for a logged user: stored content aggregates + stored behaviour sequence."""
+    d = reg.d
+    t0 = time.perf_counter()
+    ue = reg.tt.user_embeddings_eval(
+        torch.tensor([int(user_idx)]), reg.user_sum, reg.user_count, reg.content[:-1]
+    )
+    seq_row = reg.seq_t[int(user_idx)]
+    seen = set(d.seen_items[d.seen_indptr[user_idx] : d.seen_indptr[user_idx + 1]].tolist())
+    res = _run_cascade(
+        reg, ue, seq_row, seen, t0, k_retrieve, k_prerank, k_final, diversity, mmr_lambda, explain
+    )
+    return {"user_idx": int(user_idx), **res}
+
+
+@torch.no_grad()
+def recommend_session(
+    reg: Registry,
+    history: list[int],
+    k_retrieve=200,
+    k_prerank=50,
+    k_final=20,
+    diversity="mmr",
+    mmr_lambda=0.7,
+    explain: bool = False,
+) -> dict:
+    """Recommend for an ad-hoc session: the same cascade, with the user embedding pooled from
+    the given items and the behaviour sequence built on the fly (history order = chronological)."""
+    d = reg.d
+    hist = [int(h) for h in history]
+    t0 = time.perf_counter()
+    # content-mode user tower = MLP over mean item content; feed it the session's aggregates
+    sess_sum = reg.content[torch.tensor(hist)].sum(0, keepdim=True)
+    sess_count = torch.tensor([len(hist)], dtype=torch.long)
+    ue = reg.tt.user_embeddings_eval(torch.tensor([0]), sess_sum, sess_count, reg.content[:-1])
+    max_len = int(reg.seq_t.shape[1])
+    seq_row = torch.full((max_len,), d.n_items, dtype=torch.long)  # pad idx = n_items
+    tail = hist[-max_len:]
+    seq_row[: len(tail)] = torch.tensor(tail, dtype=torch.long)
+    res = _run_cascade(
+        reg,
+        ue,
+        seq_row,
+        set(hist),
+        t0,
+        k_retrieve,
+        k_prerank,
+        k_final,
+        diversity,
+        mmr_lambda,
+        explain,
+    )
+    return {"session_items": hist, **res}
