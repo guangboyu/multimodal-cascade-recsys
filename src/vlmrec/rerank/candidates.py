@@ -1,7 +1,7 @@
 """Precompute the two-tower's top-K retrieved candidates per user (excluding seen items).
 
 This is the candidate set for the full retrieve -> pre-rank -> rank -> post-process cascade, and the
-source of HARD negatives for training the pre-ranker / ranker (fixing the Week-3 cascade). Saves:
+source of HARD negatives for training the pre-ranker / ranker (fixing the cascade mismatch). Saves:
   * ``cand_topk.npy``   (n_users, K) int64 — candidate item ids
   * ``cand_scores.npy`` (n_users, K) float32 — their retrieval scores (two-tower dot products)
   * ``user_emb.npy``    (n_users, out_dim) float32 — user embeddings, so the exact retrieval score

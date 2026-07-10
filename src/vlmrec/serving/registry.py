@@ -67,15 +67,15 @@ def load_registry(cfg=None) -> Registry:
         paths.image_emb_npy,
         paths.has_image_npy,
     ):
-        _require(p, "make week1")
-    _require(rdir / "item_emb_content.npy", "make week2")
-    _require(rdir / "model_content.pt", "make week2")
+        _require(p, "make data")
+    _require(rdir / "item_emb_content.npy", "make retrieval")
+    _require(rdir / "model_content.pt", "make retrieval")
     ranker_ckpt = paths.root / str(cfg.serving.ranker_ckpt)
     fallback = paths.data / "ranking" / "model_full.pt"
     if not ranker_ckpt.exists() and fallback != ranker_ckpt:
         log.warning("configured ranker_ckpt %s missing — falling back to %s", ranker_ckpt, fallback)
         ranker_ckpt = fallback
-    _require(ranker_ckpt, "make week3")
+    _require(ranker_ckpt, "make ranking")
     from ..retrieval.data import cfg_sources
 
     rdata = build_ranking_data(paths, sources=cfg_sources(cfg))

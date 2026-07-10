@@ -7,7 +7,7 @@ feature_mode:
                 concatenated to the content (the quantile-bucket + embedding pattern).
   * "id"      — pure collaborative baseline: learned user-id and item-id vectors, no content.
                 Used for the multimodal-vs-ID ablation (the headline cold-start contrast).
-  * "sid"     — item side = semantic-ID code embeddings only (RQ-VAE codes, Week 9): the
+  * "sid"     — item side = semantic-ID code embeddings only (RQ-VAE codes): the
                 cold-start-friendly ID replacement. User side stays a learned id vector, so the
                 ablation vs "id" isolates the item-ID swap.
   * "content_sid" — content ⊕ SID code embeddings (mirrors hybrid's concat, with SIDs instead

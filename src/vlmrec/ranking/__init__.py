@@ -1,1 +1,1 @@
-"""Week 3 — Ranking (DEEP): DCN-v2 + DIN behavior attention + MMoE/PLE multi-task."""
+"""Ranking (DEEP): DCN-v2 + DIN behavior attention + MMoE/PLE multi-task."""

@@ -213,7 +213,8 @@ def render_cascade(rec: dict, hit_idx: int | None):
         elif reached is not None:
             st.info(
                 f"The held-out item survived to **{STAGE_LABEL[reached]}** (rank {rank}) "
-                "but was cut later — exactly the cascade-consistency problem WEEK7 studies."
+                "but was cut later — exactly the cascade-consistency problem that "
+                "docs/07-cascade-consistency.md studies."
             )
         else:
             st.caption(

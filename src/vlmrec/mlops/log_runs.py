@@ -95,7 +95,7 @@ def run(cfg, paths: Paths) -> dict:
                             mlflow.log_metric(_san(f"{split}_{k}"), float(val))
             logged += 1
 
-    # vlm — week 8 feature-source ablation
+    # vlm — feature-source ablation
     va = _load(paths.vlm / "ablation.json")
     if va:
         for combo, r in va.get("combos", {}).items():
@@ -110,7 +110,7 @@ def run(cfg, paths: Paths) -> dict:
                 _log_metrics(mlflow, r.get("ranking"))
             logged += 1
 
-    # sid — week 9 semantic-ID ablation + tiger demo
+    # sid — semantic-ID ablation + tiger demo
     sa = _load(paths.data / "sid" / "ablation.json")
     if sa:
         for mode, r in sa.get("towers", {}).items():

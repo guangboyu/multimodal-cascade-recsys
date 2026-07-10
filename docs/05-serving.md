@@ -1,4 +1,4 @@
-# Week 5 — Serving
+# Serving
 
 ## Goal
 Put the whole cascade behind an HTTP API with a real latency budget — the part that turns a notebook
@@ -46,6 +46,6 @@ make export-onnx  # export + verify the ONNX ranker
 docker compose up --build   # containerized: api on :8000 + demo on :8501 (mounts ./data)
 ```
 
-## Notes / next (Week 6)
+## Notes / follow-ups
 - Serving runs on CPU; the cu128 torch wheel runs CPU-only fine (swap to a CPU wheel to slim the image).
-- Week 6 adds Prometheus monitoring, MLflow tracking, and CI (Redis/Grafana noted as follow-ups).
+- Prometheus monitoring, MLflow tracking, and CI arrive with the MLOps stage (Redis/Grafana noted as follow-ups).

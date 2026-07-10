@@ -1,4 +1,4 @@
-# Week 8 — VLM item understanding
+# VLM item understanding
 
 ## Goal
 Earn the "VLM" in the project name: a vision-language model (Qwen2.5-VL) reads every product's
@@ -10,7 +10,7 @@ content block — `features.sources: [text, image, vlm]` — feeding the same tw
 CLIP embeddings encode what an item *looks like*; a VLM extracts what it *is* — normalized,
 human-readable attributes pulled jointly from image and text. The cost amortizes offline per item
 (25K, once), not per request. Cold-start is the target: content signal is all a new item has, and
-Weeks 2–3 showed content features dominate exactly there.
+the retrieval and ranking ablations showed content features dominate exactly there.
 
 ## What was built
 - **`vlmrec vlm-profile`** — shard-checkpointed batch inference (resumable; atomic shard writes).
@@ -52,6 +52,6 @@ cold slice. Two findings worth more than a bigger number:
 - **`image+vlm` matches `text+image` at identical dims** — the profile is an adequate *substitute*
   for raw listing text, but not additive beyond it on this category: Video_Games listings are
   text-rich, so the VLM verbalizes little the raw text didn't already say. The value case for
-  profiles is sparse/noisy listings — exactly what the Week-10 category swap tests.
+  profiles is sparse/noisy listings — exactly what the scale-run category swap tests.
 
-`make week8` regenerates everything.
+`make vlm` regenerates everything.

@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "ygbusc" }]
 
-# Week-1 runtime deps only. Later weeks add extras (see [project.optional-dependencies]).
+# Core runtime deps; stage-specific extras live in [project.optional-dependencies].
 dependencies = [
     # data
     "datasets>=2.19",
@@ -34,10 +34,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-retrieval = ["faiss-cpu>=1.8"]                                   # Week 2
-serving = ["fastapi>=0.110", "uvicorn>=0.29", "onnxruntime>=1.17", "faiss-cpu>=1.8"]  # Week 5
-mlops = ["mlflow>=2.12"]                                          # Week 6
-# Week 8 — VLM item profiles (transformers backend). vLLM is deliberately NOT listed: its PyPI
+retrieval = ["faiss-cpu>=1.8"]                                   # retrieval stage
+serving = ["fastapi>=0.110", "uvicorn>=0.29", "onnxruntime>=1.17", "faiss-cpu>=1.8"]  # serving stage
+mlops = ["mlflow>=2.12"]                                          # MLOps stage
+# VLM item profiles (transformers backend). vLLM is deliberately NOT listed: its PyPI
 # wheel links a newer libcudart than the 12.8 driver supports AND its torchaudio dep breaks
 # transformers imports (see docs/PITFALLS.md). On a machine with a current driver, install vllm
 # manually and set vlm.backend=vllm for ~3-6x throughput.

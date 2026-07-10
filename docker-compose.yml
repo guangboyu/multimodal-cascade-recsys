@@ -1,5 +1,5 @@
 # Serving the VLM-Rec cascade + the Streamlit demo UI. `data/` (trained artifacts) is mounted
-# read-only. Week 6 can extend this with redis (cache), prometheus + grafana (monitoring).
+# read-only. Redis (cache) and Prometheus + Grafana (monitoring) are noted follow-ups.
 services:
   api:
     build: .

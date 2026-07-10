@@ -1,4 +1,4 @@
-# Week 6 — MLOps + polish
+# MLOps + polish
 
 ## Goal
 The production hygiene around the system: continuous integration, monitoring, and experiment tracking
@@ -17,7 +17,7 @@ The production hygiene around the system: continuous integration, monitoring, an
 
 ## Run it
 ```bash
-make week6        # log all saved stage metrics to MLflow  (vlmrec log-runs)
+make log-runs        # log all saved stage metrics to MLflow  (vlmrec log-runs)
 make mlflow-ui    # browse runs at http://localhost:5000
 make serve        # then: curl http://localhost:8000/metrics   (Prometheus format)
 ```
@@ -28,4 +28,4 @@ CI runs automatically on GitHub once the repo is pushed.
   `sqlite:///mlflow.db` backend for the newest features.
 - `docker-compose.yml` is the natural place to add **Grafana** (dashboards over the Prometheus metrics)
   and **Redis** (user-embedding / hot-item cache) — wired as a follow-up.
-- Consolidated cross-week results + resume bullets live in [`RESULTS.md`](RESULTS.md).
+- Consolidated cross-stage results + resume bullets live in [`RESULTS.md`](RESULTS.md).

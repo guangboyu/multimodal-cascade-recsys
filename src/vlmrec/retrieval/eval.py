@@ -1,4 +1,4 @@
-"""Week-2 retrieval evaluation + ablation.
+"""Retrieval evaluation + ablation.
 
 Compares candidate-generation sources on the temporal test split — overall and on a COLD-START
 (long-tail) slice (test users whose target item has low train popularity):

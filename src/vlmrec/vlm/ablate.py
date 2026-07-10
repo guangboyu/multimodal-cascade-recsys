@@ -76,7 +76,7 @@ def run(cfg, paths: Paths) -> dict:
         del model, T
         torch.cuda.empty_cache()
 
-        # ranking: standard week-3-style ranker on the same feature combo (no hard negs/score —
+        # ranking: standard baseline ranker on the same feature combo (no hard negs/score —
         # this isolates the content representation, not the cascade machinery)
         from ..ranking.data import build_ranking_data
 

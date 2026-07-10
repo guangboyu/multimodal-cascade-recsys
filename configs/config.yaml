@@ -1,5 +1,5 @@
-# VLM-Rec — Week-1 configuration.
-# Override any key on the CLI, e.g.:  uv run vlmrec week1 -o dataset.max_reviews=200000
+# VLM-Rec configuration: single source of truth for every pipeline stage.
+# Override any key on the CLI, e.g.:  uv run vlmrec data -o dataset.max_reviews=200000
 
 seed: 42
 device: auto            # auto | cuda | cpu
@@ -42,7 +42,7 @@ text:
   batch_size: 256
 
 features:
-  # winning Week-8 combo: +1.5% overall R@100 vs text+image; cold-start neutral (documented)
+  # winning ablation combo: +1.5% overall R@100 vs text+image; cold-start neutral (documented)
   sources: [text, image, vlm]  # item content blocks: text | image | vlm (canonical order)
 
 vlm:

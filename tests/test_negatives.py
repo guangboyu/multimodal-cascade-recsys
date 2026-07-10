@@ -1,4 +1,4 @@
-"""Pure-logic tests for hygienic negative sampling (the Week-4 cascade-fix core)."""
+"""Pure-logic tests for hygienic negative sampling (the cascade-fix core)."""
 
 from __future__ import annotations
 

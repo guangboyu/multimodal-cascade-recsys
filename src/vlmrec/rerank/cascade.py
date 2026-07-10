@@ -1,4 +1,4 @@
-"""Week-4/7 orchestrator: the cascade-consistency fix + pre-rank consistency + diversity tradeoff.
+"""Rerank orchestrator: the cascade-consistency fix + pre-rank consistency + diversity tradeoff.
 
 1. precompute the retriever's candidates (+ scores + user embeddings),
 2. retrain the ranker on CLEAN hard negatives (held-out positives excluded) — two variants:
@@ -149,7 +149,7 @@ def _write_md(out_dir, s) -> None:
         ]
     lines += [
         "",
-        "The Week-3/4 failure modes and the fix are documented in docs/PITFALLS.md:",
+        "The failure modes and the fix are documented in docs/PITFALLS.md:",
         "random negatives never teach the serving distribution; naive hard negatives poison",
         "labels with held-out positives; the fix = clean negative pool + the retrieval score",
         "as a ranker input so ranking refines (not fights) the retrieval signal.",

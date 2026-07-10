@@ -1,4 +1,4 @@
-# Week 10 — Scale run: Beauty_and_Personal_Care (8.1x)
+# Scale run: Beauty_and_Personal_Care (8.1x)
 
 ## Goal
 Re-run the entire pipeline — data → features → VLM profiles → retrieval → cascade → semantic IDs →

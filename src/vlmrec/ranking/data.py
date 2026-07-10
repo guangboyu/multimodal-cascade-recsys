@@ -61,7 +61,7 @@ def sample_negatives(
 
     Excludes the row's own positive and the user's held-out valid/test items from BOTH pools —
     a user's future positive is usually retrieved, so labelling it click=0 poisons hard-negative
-    training (the Week-4 cascade failure; see docs/PITFALLS.md). Collisions are rejection-resampled
+    training (the cascade failure in docs/PITFALLS.md). Collisions are rejection-resampled
     (hard slots redraw from the candidate row, random slots from the catalog); the final fallback
     walks stragglers off the banned set deterministically.
     """

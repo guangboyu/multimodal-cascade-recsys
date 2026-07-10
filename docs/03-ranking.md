@@ -1,4 +1,4 @@
-# Week 3 — Ranking (the deep stage)
+# Ranking (the deep stage)
 
 ## Goal
 Re-score the few hundred retrieved candidates with a heavy model. Ranking is a *precision* problem
@@ -35,14 +35,14 @@ multi-task, and the full structured-feature treatment.
   LogLoss but worse GAUC — crosses help ordering more than calibration.)
 - **Multi-task is ~neutral** on click GAUC while adding the satisfaction objective — a free second head.
 
-## Cascade finding (honest negative result → Week-4 motivation)
+## Cascade finding (honest negative result → rerank motivation)
 Re-ranking the retriever's top-200 with this ranker **lowered** NDCG@10 (0.109 → 0.081). The ranker
 was trained on **random** negatives, which are far easier than the **hard** negatives retrieval
 surfaces, so it isn't calibrated to separate already-good candidates — classic **sample-selection
 bias / train-serve mismatch**. Fix: train the ranker on hard negatives sampled from retrieval
-(addressed at the pre-ranking / consistency stage in Week 4).
+(addressed at the pre-ranking / consistency stage; see 04-rerank.md).
 
 ## Run it
 ```bash
-make week3          # train ranker + ablation
+make ranking          # train ranker + ablation
 ```

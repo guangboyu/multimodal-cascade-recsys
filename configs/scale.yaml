@@ -1,4 +1,4 @@
-# VLM-Rec — Week-10 scale profile: Beauty_and_Personal_Care (~23.9M raw reviews).
+# VLM-Rec — scale profile: Beauty_and_Personal_Care (~23.9M raw reviews).
 # Run any stage against it with:  uv run vlmrec <stage> --config configs/scale.yaml
 # Paths are category-scoped so the Video_Games artifacts under data/ stay untouched.
 

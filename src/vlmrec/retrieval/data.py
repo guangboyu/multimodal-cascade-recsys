@@ -117,7 +117,7 @@ def load_retrieval_data(
     files = {
         "text": paths.text_emb_npy,
         "image": paths.image_emb_npy,
-        "vlm": paths.profile_emb_npy,  # VLM item-profile embeddings (Week 8)
+        "vlm": paths.profile_emb_npy,  # VLM item-profile embeddings
     }
     blocks = [np.load(files[s]) for s in sources]
     has = np.load(paths.has_image_npy).astype(np.float32)

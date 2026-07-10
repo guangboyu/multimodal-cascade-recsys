@@ -1,4 +1,4 @@
-"""Week-3 ranking ablation + cascade (retrieve → rank) evaluation.
+"""Ranking ablation + cascade (retrieve → rank) evaluation.
 
 Ablation trains the ranker with components toggled off (multimodal / DIN / DCN cross / multi-task)
 and reports GAUC overall + on a cold-start slice. Cascade re-ranks the two-tower's retrieved

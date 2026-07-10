@@ -1,7 +1,8 @@
 """Command-line entry point: ``vlmrec <command> [-o key=value ...]``.
 
-Commands map 1:1 to pipeline stages; ``week1`` runs them all in order. Heavy deps (torch,
-sentence-transformers) are imported lazily per command so data-only commands start fast.
+Commands map 1:1 to pipeline stages; ``data`` runs the whole data/feature foundation in order.
+Heavy deps (torch, sentence-transformers) are imported lazily per command so data-only commands
+start fast.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ COMMANDS = [
     "encode-text",
     "encode-image",
     "eda",
-    "week1",
+    "data",
     "retrieval-train",
     "retrieval-eval",
     "ranking-train",
@@ -62,8 +63,8 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from . import eda
 
         eda.run(cfg, paths)
-    elif cmd == "week1":
-        _week1(cfg, paths, log)
+    elif cmd == "data":
+        _data(cfg, paths, log)
     elif cmd == "retrieval-train":
         from .retrieval import train
 
@@ -149,19 +150,19 @@ def _demo(cfg) -> None:
     )
 
 
-def _week1(cfg, paths: Paths, log) -> None:
+def _data(cfg, paths: Paths, log) -> None:
     from . import eda
     from .data import build_interactions, download, download_images
     from .features import encode_image, encode_text
 
-    log.info("=== Week 1: data + feature foundation ===")
+    log.info("=== data + feature foundation ===")
     download.run(cfg, paths)
     build_interactions.run(cfg, paths)
     download_images.run(cfg, paths)
     encode_text.run(cfg, paths)
     encode_image.run(cfg, paths)
     eda.run(cfg, paths)
-    log.info("=== Week 1 complete ===")
+    log.info("=== data + feature foundation complete ===")
 
 
 def main() -> None:

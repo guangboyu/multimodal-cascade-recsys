@@ -1,13 +1,13 @@
-# Week 7 — Cascade consistency: fixing the ranker/retrieval mismatch
+# Cascade consistency: fixing the ranker/retrieval mismatch
 
 ## Goal
-Turn the Week-4 negative result — the ranker *degrades* the retriever's candidate order — into a
+Turn the rerank-stage negative result — the ranker *degrades* the retriever's candidate order — into a
 diagnosed, fixed, and measured cascade. Three repairs, each isolating one failure mode.
 
 ## What was wrong (mechanically)
-1. **Random negatives** (Week 3): the ranker never saw a hard example in training, so re-ranking
+1. **Random negatives** (the original ranking stage): the ranker never saw a hard example in training, so re-ranking
    retrieval's all-plausible top-200 was noise. NDCG@10: retrieval order 0.109 → ranker 0.081.
-2. **Poisoned hard negatives** (Week 4): candidates masked only *train*-seen items, so a user's
+2. **Poisoned hard negatives** (the first rerank pass): candidates masked only *train*-seen items, so a user's
    held-out positive — usually retrieved, since retrieval works — could be sampled as a negative
    and labelled click=0. NDCG@10 fell further to 0.051.
 3. **No cross-stage signal**: the ranker had no retrieval-score input, so it could only *replace*
@@ -28,15 +28,15 @@ the valid split (α→1 degenerates to retrieval order, so fused ≥ retrieval i
 
 ## Results (test split; NDCG@10 over the retriever's top-200)
 
-> **Provenance:** this table is the experiment *as originally run*, on the Week-2 text+image
-> (897-d) features. The grid re-runs whenever `make week4` executes on the current feature set,
+> **Provenance:** this table is the experiment *as originally run*, on the original text+image
+> (897-d) features. The grid re-runs whenever `make rerank` executes on the current feature set,
 > and the artifacts on disk reflect the latest run — which flipped the winner (see the caveats).
 > That instability across feature sets is itself a finding.
 
 | ranker | ranker order | GAUC (random negs) |
 |---|---|---|
-| naive (random negatives, Week 3) | 0.081 | 0.858 |
-| hard negatives (poisoned, Week 4) | 0.051 | — |
+| naive (random negatives) | 0.081 | 0.858 |
+| hard negatives (poisoned) | 0.051 | — |
 | hard negatives, clean pool | 0.060 | 0.791 |
 | **+ retrieval-score feature (valid-best on this run)** | **0.075** | 0.825 |
 | + listwise softmax | 0.064 | 0.647 |
@@ -70,12 +70,12 @@ teacher's top-10 on this run; 76% on the fused re-run).
 
 ## Run it
 ```bash
-make week4        # candidates (+scores/user embeddings) → variant grid → fusion → distill → diversity
+make rerank        # candidates (+scores/user embeddings) → variant grid → fusion → distill → diversity
 make serve        # serves the cascade-consistent ranker automatically
 ```
 
 ## Honest caveats
-- **Variant ranking is feature-set-dependent.** Re-running the grid on the Week-8 fused features
+- **Variant ranking is feature-set-dependent.** Re-running the grid on the fused (text+image+VLM) features
   (1281-d) flipped the winner to `hardneg_clean` (the score-feature variants dropped to 0.045 /
   0.031); the valid-split selection caught it automatically and served the right checkpoint with
   the right sidecar metadata. Fixed model choices rot when the features change — automate the

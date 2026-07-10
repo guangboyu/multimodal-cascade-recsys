@@ -1,8 +1,8 @@
-# Week 2 — Candidate generation (lean retrieval)
+# Candidate generation (lean retrieval)
 
 ## Goal
 Reduce ~25k items to a few hundred good candidates per user, cheaply. Retrieval is a *recall* problem
-kept deliberately simple; the ML depth is saved for ranking (Week 3).
+kept deliberately simple; the ML depth is saved for ranking (03-ranking.md).
 
 ## What was built (`src/vlmrec/retrieval/`)
 - **`data.py`** — assembles the item content matrix (text ⊕ image ⊕ has_image = 897-d), structured
@@ -43,5 +43,5 @@ FAISS HNSW recovers **81%** of the exact top-100.
 
 ## Run it
 ```bash
-make week2          # train content/hybrid/id + run the ablation
+make retrieval          # train content/hybrid/id + run the ablation
 ```

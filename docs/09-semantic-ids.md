@@ -1,4 +1,4 @@
-# Week 9 — Semantic IDs (RQ-VAE) + generative retrieval demo
+# Semantic IDs (RQ-VAE) + generative retrieval demo
 
 ## Goal
 Replace opaque item-ID pointers with **semantic IDs**: RQ-VAE quantizes each item's fused content
@@ -49,4 +49,4 @@ the two-tower's 0.0625, from a 1M-parameter model with a 769-token vocabulary, n
 index-free, generation-native retrieval) and the constrained-trie decoding that guarantees every
 generated sequence is a real item.
 
-`make week9` regenerates everything.
+`make sid` regenerates everything.

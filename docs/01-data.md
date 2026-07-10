@@ -1,4 +1,4 @@
-# Week 1 — Data + multimodal feature foundation
+# Data + multimodal feature foundation
 
 ## Goal
 Turn raw Amazon Reviews 2023 (`Video_Games`) into a clean, split, multimodal dataset that every later
@@ -36,6 +36,6 @@ embeddings for each item.
 
 ## Run it
 ```bash
-make week1          # full build
-make week1-dev      # fast capped subsample (proves the pipeline)
+make data          # full build
+make data-dev      # fast capped subsample (proves the pipeline)
 ```

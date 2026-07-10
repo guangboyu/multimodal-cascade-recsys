@@ -2,7 +2,7 @@
 
 Each item's product image + title/description goes through a vision-language model that returns
 a fixed-schema JSON profile (refined category, visual style, attributes, audience, tone).
-Profiles are stored as JSON strings for a stable parquet schema (the Week-1 ingestion pattern),
+Profiles are stored as JSON strings for a stable parquet schema (the data-stage ingestion pattern),
 then embedded by ``encode_profile``. Inference is shard-checkpointed and resumable — this is a
 multi-hour batch job, and re-running skips completed shards.
 """

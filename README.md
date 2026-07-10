@@ -72,17 +72,17 @@ The demo is backed by read-only metadata endpoints (`/user`, `/item`, `/similar`
 
 ## Pipeline
 
-Each stage is one CLI command, driven by a single YAML config. Filenames under `docs/` follow
-the build order (WEEK1 through WEEK10) and serve as per-stage engineering notes.
+Each stage is one CLI command, driven by a single YAML config. The numbered files under `docs/`
+(01 through 10) are the per-stage engineering notes, in build order.
 
-### Data and item features ([docs/WEEK1.md](docs/WEEK1.md))
+### Data and item features ([docs/01-data.md](docs/01-data.md))
 
 Streamed download, dedup, 5-core filtering, and temporal leave-last-out splits. Video_Games
 resolves to 94,762 users, 25,612 items, 814,586 interactions with 99.98% image coverage.
 Item content fuses MiniLM text embeddings, CLIP image embeddings, and MiniLM-encoded VLM
 profiles into a 1281-d block.
 
-### Retrieval ([docs/WEEK2.md](docs/WEEK2.md))
+### Retrieval ([docs/02-retrieval.md](docs/02-retrieval.md))
 
 Two-tower models trained with in-batch negatives and logQ correction, served from FAISS, plus an
 item2item co-visitation channel. Test ablation (temporal leave-last-out):
@@ -99,7 +99,7 @@ Multimodal content beats pure ID by 66% R@100 (81% on the cold-start slice) with
 parameters. Co-visitation is complementary and wins on cold-start, motivating a blended
 multi-source design. HNSW recovers 81% of the exact top-100.
 
-### Ranking ([docs/WEEK3.md](docs/WEEK3.md))
+### Ranking ([docs/03-ranking.md](docs/03-ranking.md))
 
 DIN target attention, DCN-v2 feature crosses, and MMoE multi-task heads (click plus
 satisfaction). Ablation, GAUC = per-user AUC:
@@ -116,7 +116,7 @@ Multimodal features are the dominant driver: without them overall GAUC drops by 
 cold-start falls below random. DIN and DCN-v2 each add 0.006-0.009; multi-task is neutral on
 click while adding the satisfaction objective.
 
-### Pre-ranking, post-processing, and cascade consistency ([docs/WEEK4.md](docs/WEEK4.md), [docs/WEEK7.md](docs/WEEK7.md))
+### Pre-ranking, post-processing, and cascade consistency ([docs/04-rerank.md](docs/04-rerank.md), [docs/07-cascade-consistency.md](docs/07-cascade-consistency.md))
 
 A distilled pre-ranker cuts 200 candidates to 50 while keeping 79% of the heavy ranker's top-10;
 MMR and DPP provide the relevance/diversity trade-off. The cascade-consistency work found that
@@ -125,7 +125,7 @@ and that the retrieval score must ride along as a ranker feature. The fix recove
 cascade NDCG@10, and the failure modes (reverse label leakage, residual selection bias) are
 written up rather than hidden.
 
-### VLM item profiles ([docs/WEEK8.md](docs/WEEK8.md))
+### VLM item profiles ([docs/08-vlm-profiles.md](docs/08-vlm-profiles.md))
 
 Qwen2.5-VL generates a structured JSON profile (category, attributes, audience, style) for every
 item from its image and title: 25.6K items in 4 hours on one RTX 4090, 100% valid JSON via
@@ -134,26 +134,26 @@ block, worth +1.5% R@100 here and +3.1% on the sparser large catalog. They did n
 cold-start on either category; that null result is documented and the ID pathway below is what
 actually fixed it.
 
-### Semantic IDs ([docs/WEEK9.md](docs/WEEK9.md))
+### Semantic IDs ([docs/09-semantic-ids.md](docs/09-semantic-ids.md))
 
 An RQ-VAE (k-means init, EMA updates, dead-code reseeding) quantizes item content into 3x256
 codes with 100% codebook utilization. Used in place of learned item IDs they lift cold-start
 retrieval by 46-47%, and a TIGER-style generative-retrieval demo decodes item codes directly
 with a constrained trie.
 
-### Serving ([docs/WEEK5.md](docs/WEEK5.md))
+### Serving ([docs/05-serving.md](docs/05-serving.md))
 
 FastAPI cascade (retrieve, pre-rank, rank, post-process) with per-stage latency accounting:
 around 16 ms p99 on CPU with an exact index, 10 ms with HNSW at 208K items. The heavy ranker
 optionally runs through ONNX Runtime with verified parity (max diff 2.4e-6). Docker plus
 docker-compose ship the API and demo together.
 
-### MLOps ([docs/WEEK6.md](docs/WEEK6.md))
+### MLOps ([docs/06-mlops.md](docs/06-mlops.md))
 
 GitHub Actions CI (ruff plus pure-logic tests), Prometheus metrics on the serving app, MLflow
 tracking for all recorded runs.
 
-### Scale run ([docs/WEEK10.md](docs/WEEK10.md))
+### Scale run ([docs/10-scale.md](docs/10-scale.md))
 
 The identical pipeline over Beauty_and_Personal_Care (729K users, 208K items, 6.6M interactions)
 through a config swap alone. The headline findings replicate: multimodal vs ID +75%, semantic-ID
@@ -167,13 +167,13 @@ Requires [`uv`](https://docs.astral.sh/uv/) and, for training, an NVIDIA GPU.
 ```bash
 uv sync --all-extras        # create .venv and install all stages (faiss, mlflow live in extras)
 
-make week1-dev              # capped smoke run (~200k reviews, 500 images) to prove the pipeline
-make week1                  # data + features: download, filter, split, encode text/images
-make week2                  # retrieval: train two-towers + ablation
-make week3                  # ranking: train DIN+DCN-v2+MMoE + ablation
-make week4                  # cascade fix, pre-ranker distillation, diversity
-make week8                  # VLM item profiles: generate, encode, ablate
-make week9                  # semantic IDs: RQ-VAE + SID-vs-ID ablation (also: vlmrec tiger-demo)
+make data-dev              # capped smoke run (~200k reviews, 500 images) to prove the pipeline
+make data                  # data + features: download, filter, split, encode text/images
+make retrieval                  # retrieval: train two-towers + ablation
+make ranking                  # ranking: train DIN+DCN-v2+MMoE + ablation
+make rerank                  # cascade fix, pre-ranker distillation, diversity
+make vlm                  # VLM item profiles: generate, encode, ablate
+make sid                  # semantic IDs: RQ-VAE + SID-vs-ID ablation (also: vlmrec tiger-demo)
 make serve                  # FastAPI cascade on http://localhost:8000
 make demo                   # Streamlit demo on http://localhost:8501
 ```
@@ -182,7 +182,7 @@ Individual stages are plain CLI commands (`uv run vlmrec download`, `build-inter
 `encode-text`, and so on), and any config key can be overridden inline:
 
 ```bash
-uv run vlmrec week1 -o dataset.category=Baby_Products dataset.max_reviews=500000
+uv run vlmrec data -o dataset.category=Baby_Products dataset.max_reviews=500000
 
 # run any stage against the large-catalog profile
 uv run vlmrec retrieval-train --config configs/scale.yaml
@@ -204,7 +204,7 @@ src/vlmrec/
   mlops/                 # MLflow run logging
 tests/                   # pure-logic unit tests (no network or GPU)
 data/                    # artifacts (gitignored)
-docs/                    # RESULTS, per-stage notes (WEEK1-10), PITFALLS
+docs/                    # RESULTS, numbered per-stage notes, PITFALLS
 ```
 
 ## Dataset
@@ -219,5 +219,5 @@ single GPU; Beauty_and_Personal_Care is the scale-up category.
 | Doc | Contents |
 |---|---|
 | [`docs/RESULTS.md`](docs/RESULTS.md) | consolidated results, with provenance per table |
-| [`docs/WEEK1.md`](docs/WEEK1.md) ... [`docs/WEEK10.md`](docs/WEEK10.md) | per-stage engineering notes in build order |
+| [`docs/01-data.md`](docs/01-data.md) ... [`docs/10-scale.md`](docs/10-scale.md) | per-stage engineering notes in build order |
 | [`docs/PITFALLS.md`](docs/PITFALLS.md) | the bug log: documented failures, root causes, and dead ends |

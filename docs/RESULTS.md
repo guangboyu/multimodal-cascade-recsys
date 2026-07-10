@@ -12,7 +12,7 @@ post-processing → serving, plus VLM item understanding and RQ-VAE semantic IDs
 |---|---|---|
 | **Retrieval** (W2) | two-tower multimodal vs ID-only, R@100 | **0.214 vs 0.129 (+66%)**; **+81%** cold-start |
 | **Ranking** (W3) | DIN+DCN-v2+MMoE, click GAUC | **0.858**; −multimodal 0.761 (cold collapses 0.70→0.35) |
-| **Cascade fix** (W7) | poisoned hard-negs → clean pool + retrieval-score feature, NDCG@10 | **0.051 → 0.075 (+48%)** on the original run (fused re-run: 0.063, different winner — see WEEK7) |
+| **Cascade fix** (W7) | poisoned hard-negs → clean pool + retrieval-score feature, NDCG@10 | **0.051 → 0.075 (+48%)** on the original run (fused re-run: 0.063, different winner — see 07-cascade-consistency.md) |
 | **VLM profiles** (W8) | Qwen2.5-VL structured item profiles, 25.6K items | **100% JSON validity in 4.0 h**; +1.5% R@100; cold-start neutral (honestly reported) |
 | **Semantic IDs** (W9) | RQ-VAE codes vs raw item IDs, cold-start R@100 | **+46%** (0.0241 → 0.0353); ranker +SID GAUC 0.858→0.861 |
 | **Generative retrieval** (W9) | TIGER-lite demo, R@10 | 0.031 vs two-tower 0.063 — 1M params, no ANN index |

@@ -1,4 +1,4 @@
-# Week 4 — Pre-ranking + post-processing
+# Pre-ranking + post-processing
 
 ## Goal
 Two stages around the heavy ranker: a **pre-ranker** that cheaply cuts the retriever's ~200 candidates
@@ -49,5 +49,5 @@ real cascades stay consistent — and exactly the kind of systems insight the ca
 
 ## Run it
 ```bash
-make week4
+make rerank
 ```
