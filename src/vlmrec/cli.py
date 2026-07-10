@@ -34,6 +34,8 @@ COMMANDS = [
     "tiger-demo",
     "export-onnx",
     "log-runs",
+    "serve",
+    "serve-api",
     "demo",
 ]
 
@@ -117,8 +119,97 @@ def _dispatch(cmd: str, cfg, paths: Paths, log) -> None:
         from .mlops import log_runs
 
         log_runs.run(cfg, paths)
+    elif cmd == "serve":
+        _serve(cfg, log)
+    elif cmd == "serve-api":
+        _serve_api(cfg)
     elif cmd == "demo":
         _demo(cfg)
+
+
+def _serve_api(cfg) -> None:
+    """Run just the FastAPI cascade (config-driven host/port)."""
+    import uvicorn
+
+    uvicorn.run("vlmrec.serving.app:app", host=str(cfg.serving.host), port=int(cfg.serving.port))
+
+
+def _serve(cfg, log) -> None:
+    """Launch the FastAPI cascade + the Streamlit UI together; Ctrl-C stops both.
+
+    Starts the API as a child process, waits for ``/health`` to go green (cold start loads the
+    registry — features + checkpoints), then runs the UI in the foreground pointed at it.
+    """
+    import importlib.util
+    import os
+    import subprocess
+    import sys
+    import time
+    import urllib.error
+    import urllib.request
+    from pathlib import Path as _P
+
+    if importlib.util.find_spec("streamlit") is None:
+        raise SystemExit("streamlit is not installed — run `uv sync --all-extras` first")
+
+    host, port, ui_port = str(cfg.serving.host), int(cfg.serving.port), int(cfg.demo.port)
+    health = f"http://localhost:{port}/health"
+    api = subprocess.Popen(  # noqa: S603
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "vlmrec.serving.app:app",
+            "--host",
+            host,
+            "--port",
+            str(port),
+        ]
+    )
+    try:
+        log.info("serving API booting on http://localhost:%d — loading registry…", port)
+        # registry load (features + ranker) is slow on cold start; compose allows 120s
+        timeout_s = 180
+        for _ in range(timeout_s):
+            if api.poll() is not None:
+                raise SystemExit(f"serving API exited early (code {api.returncode})")
+            try:
+                with urllib.request.urlopen(health, timeout=2) as r:  # noqa: S310
+                    if r.status == 200:
+                        break
+            except (urllib.error.URLError, OSError):
+                pass  # port not bound / registry not ready yet — keep polling
+            time.sleep(1)
+        else:
+            raise SystemExit(f"serving API did not become healthy within {timeout_s}s")
+
+        log.info("API healthy ✓  starting UI on http://localhost:%d (Ctrl-C stops both)", ui_port)
+        app_file = _P(__file__).parent / "serving" / "demo_app.py"
+        env = {**os.environ, "VLMREC_API": f"http://localhost:{port}"}
+        subprocess.run(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "streamlit",
+                "run",
+                str(app_file),
+                "--server.port",
+                str(ui_port),
+                "--server.headless",
+                "true",
+            ],
+            env=env,
+            check=False,
+        )
+    except KeyboardInterrupt:
+        pass
+    finally:
+        api.terminate()
+        try:
+            api.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            api.kill()
+        log.info("serving API stopped")
 
 
 def _demo(cfg) -> None:

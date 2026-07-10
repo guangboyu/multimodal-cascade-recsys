@@ -54,9 +54,12 @@ representation carrying most of the quality.
 A Streamlit UI over the live serving API. Pick a user and watch the cascade build their feed:
 
 ```bash
-make serve   # FastAPI cascade on :8000
-make demo    # Streamlit UI on :8501  (or: docker compose up)
+make serve   # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
 ```
+
+`make serve` boots the FastAPI cascade, waits for it to load, then opens the UI pointed at it —
+one command, one terminal. (Or `docker compose up` for the containerized pair.) Need the pieces
+apart? `make serve-api` runs the API alone and `make demo` the UI alone.
 
 Two modes run against the same live cascade:
 
@@ -176,8 +179,9 @@ make ranking                  # ranking: train DIN+DCN-v2+MMoE + ablation
 make rerank                  # cascade fix, pre-ranker distillation, diversity
 make vlm                  # VLM item profiles: generate, encode, ablate
 make sid                  # semantic IDs: RQ-VAE + SID-vs-ID ablation (also: vlmrec tiger-demo)
-make serve                  # FastAPI cascade on http://localhost:8000
-make demo                   # Streamlit demo on http://localhost:8501
+make serve                  # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
+make serve-api              # API only (http://localhost:8000)
+make demo                   # UI only  (http://localhost:8501, needs an API running)
 ```
 
 Individual stages are plain CLI commands (`uv run vlmrec download`, `build-interactions`,

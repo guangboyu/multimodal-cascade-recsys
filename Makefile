@@ -1,4 +1,4 @@
-.PHONY: setup data data-dev retrieval retrieval-train retrieval-eval ranking ranking-train ranking-eval rerank vlm sid sid-train sid-eval vlm-profile encode-profile vlm-ablation serve demo export-onnx log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
+.PHONY: setup data data-dev retrieval retrieval-train retrieval-eval ranking ranking-train ranking-eval rerank vlm sid sid-train sid-eval vlm-profile encode-profile vlm-ablation serve serve-api demo export-onnx log-runs mlflow-ui download interactions images encode-text encode-image eda test lint fmt clean
 
 setup:          ## create .venv and install everything (faiss/mlflow live in extras)
 	uv sync --all-extras
@@ -68,12 +68,14 @@ sid-train:
 sid-eval:
 	uv run vlmrec sid-eval
 
-# --- serving (FastAPI cascade + ONNX + demo) ---
-serve:          ## run the FastAPI cascade at http://localhost:8000
-	uv run uvicorn vlmrec.serving.app:app --host 0.0.0.0 --port 8000
-demo:           ## Streamlit UI at http://localhost:8501 (needs `make serve` in another shell)
+# --- serving (FastAPI cascade + Streamlit UI + ONNX) ---
+serve:          ## API (:8000) + Streamlit UI (:8501) together — one command, Ctrl-C stops both
+	uv run vlmrec serve
+serve-api:      ## API only — FastAPI cascade at http://localhost:8000 (clients connect separately)
+	uv run vlmrec serve-api
+demo:           ## Streamlit UI only at http://localhost:8501 (needs an API running elsewhere)
 	uv run vlmrec demo
-export-onnx:    ## export ranker to ONNX (then `make serve` with serving.use_onnx=true)
+export-onnx:    ## export ranker to ONNX (then `make serve` with -o serving.use_onnx=true)
 	uv run vlmrec export-onnx
 
 # --- MLOps (CI in .github/, Prometheus /metrics in the app) ---

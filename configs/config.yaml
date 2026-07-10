@@ -118,6 +118,8 @@ tiger:
   eval_users: 10000
 
 serving:
+  host: 0.0.0.0                 # bind address for the FastAPI cascade
+  port: 8000                    # cascade port — the Streamlit UI and API clients connect here
   ranker_ckpt: data/rerank/ranker_cascade.pt  # cascade-consistent ranker (falls back to model_full)
   k_retrieve: ${rerank.cand_k}  # FAISS candidates fetched per request
   k_prerank: 50                 # pre-ranker cut fed to the heavy ranker
@@ -125,5 +127,5 @@ serving:
   index: flat                   # flat (exact) | hnsw | ivf — ANN for big catalogs
 
 demo:
-  api: http://localhost:8000    # serving API the Streamlit UI talks to (HTTP only, no model code)
+  api: http://localhost:${serving.port}  # serving API the UI talks to (HTTP only, no model code)
   port: 8501
