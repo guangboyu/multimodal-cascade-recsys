@@ -60,7 +60,10 @@ def recommend(
     )
     sc, idx = reg.index.search(ue.numpy().astype("float32"), k_retrieve + 64)
     seen = set(d.seen_items[d.seen_indptr[user_idx] : d.seen_indptr[user_idx + 1]].tolist())
-    keep = np.array([j for j, c in enumerate(idx[0]) if c not in seen][:k_retrieve], dtype=np.int64)
+    # ANN indexes (HNSW/IVF) return -1 for unfilled slots — exact flat never does
+    keep = np.array(
+        [j for j, c in enumerate(idx[0]) if c >= 0 and c not in seen][:k_retrieve], dtype=np.int64
+    )
     cand = idx[0][keep].astype(np.int64)
     ret = sc[0][keep].astype(np.float32)
     lat["retrieve_ms"] = (time.perf_counter() - t0) * 1000

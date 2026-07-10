@@ -17,7 +17,7 @@ post-processing → serving, plus VLM item understanding and RQ-VAE semantic IDs
 | **Semantic IDs** (W9) | RQ-VAE codes vs raw item IDs, cold-start R@100 | **+46%** (0.0241 → 0.0353); ranker +SID GAUC 0.858→0.861 |
 | **Generative retrieval** (W9) | TIGER-lite demo, R@10 | 0.031 vs two-tower 0.063 — 1M params, no ANN index |
 | **Serving** (W5/7) | FastAPI cascade p50/p99 CPU (fused 1281-d stack) | **12 / 16 ms**; ONNX Runtime path item-identical (parity 2.4e-06) |
-| **Scale run** (W10) | 8.1x items through the same configs | 207,641 images in 26 min; CLIP 207K items in 4 min; (full metrics below) |
+| **Scale run** (W10) | 8.1x items through the same configs | multimodal-vs-ID **+75%** and SID cold-start **+47%** replicate; VLM lift grows to **+3.1%**; serving p99 **10 ms** (HNSW, 11 GB registry) |
 
 **The throughline:** multimodal item content is the dominant driver at both retrieval and ranking,
 and *content-derived representations* (CLIP, VLM profiles, semantic IDs) pay exactly where
@@ -37,12 +37,25 @@ in the top-50 cratered NDCG to 0.032, demonstrating *residual selection bias* �
 converging to ~1.0 quantifies how retrieval-favoring the offline metric is; the unbiased
 comparison needs online A/B.
 
-**2. The honest VLM ablation (W8).** Structured Qwen2.5-VL item profiles (100% valid JSON via
-defensive parsing, batched offline inference) added +1.5% overall recall but *nothing* on
-cold-start — the opposite of the hypothesis. Root cause: Video_Games listings are text-rich, so
-the profile mostly re-encodes what the raw-text embedding already had. The 385-d profile embedding
-alone nearly matches the 513-d CLIP block — the VLM is a powerful *compressor* even when not
-additive. Category-dependence is exactly what the Week-10 scale run re-tests.
+**2. The honest VLM ablation (W8 → W10).** Structured Qwen2.5-VL item profiles (100% valid JSON,
+batched offline inference) added +1.5% overall recall but *nothing* on cold-start — the opposite
+of the hypothesis. Root cause: Video_Games listings are text-rich, so the profile mostly
+re-encodes what the raw-text embedding already had. The 385-d profile embedding alone nearly
+matches the 513-d CLIP block — the VLM is a powerful *compressor* even when not additive. The
+scale run then tested category-dependence: on the 7.7x-sparser Beauty catalog the overall lift
+**doubled to +3.1%** while the extreme-cold null replicated — the refined claim is "VLM profile
+value grows with sparsity, but the extreme cold tail needs ID-pathway fixes (semantic IDs), not
+more content."
+
+**3. Cross-category replication (W10).** Every headline finding was re-measured on
+Beauty_and_Personal_Care (729,576 users · 207,649 items · 6.62M interactions) via a config-only
+category swap: multimodal-vs-ID grew to **+75%**, SID cold-start lift replicated at **+47%**
+(0.0056→0.0083), the multimodal-removal collapse and the retrieval-favoring cascade metric all
+reproduced, and the cascade variant winner *changed again* (listwise softmax won at scale) —
+validating automated valid-split selection over fixed model choices. Ops findings: HNSW's −1
+sentinels crashed serving until `efSearch`/filtering were fixed; the 3B VLM needed batch re-tuning
+to saturate the GPU (16.8 h for 207K profiles at 99.76% validity); serving holds **p50 8.6 /
+p99 10.1 ms** with an 11 GB registry.
 
 ## What the project demonstrates
 - **Retrieval:** two-tower/EBR, in-batch sampled softmax + logQ correction, FAISS (flat/HNSW/IVF), item2item.
@@ -70,7 +83,9 @@ additive. Category-dependence is exactly what the Week-10 scale run re-tests.
 - Implemented **RQ-VAE semantic IDs** (100% codebook utilization, perplexity-gated) delivering
   **+46% cold-start retrieval** as an item-ID replacement, plus a TIGER-style generative-retrieval
   demo with constrained trie decoding.
-- Scaled the whole pipeline **8.1x by config only** (category-scoped paths), capturing per-stage
-  bottlenecks (GPU-underfill at small model sizes, single-thread image decode) and their fixes.
+- Scaled the whole pipeline **8.1x by config only** (category-scoped paths) and **replicated every
+  headline finding cross-category** (+75% multimodal-vs-ID, +47% SID cold-start), while capturing
+  per-stage bottlenecks — GPU-underfill at small model sizes, single-thread image decode, ANN −1
+  sentinels — and their fixes.
 
 Per-stage write-ups in [`docs/`](.) and the honest bug log in [`PITFALLS.md`](PITFALLS.md).

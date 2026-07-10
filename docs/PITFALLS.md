@@ -128,6 +128,47 @@ real debugging time.
 - **Takeaway:** when the eval candidates come from the model you're comparing against, treat
   "challenger loses" as expected-bias first, model-failure second.
 
+## 13. The too-new-CUDA pitfall, round two: vLLM's wheel vs the driver
+- **Symptom:** `import vllm` failed with `libcudart.so.13: cannot open shared object file`; worse,
+  its `torchaudio` dependency shipped an ABI-incompatible `.so` that broke `transformers` imports
+  for the entire venv.
+- **Root cause:** vLLM's PyPI wheel links CUDA 13 runtime; the driver supports 12.8 (the exact
+  failure mode of pitfall #1, one layer up the stack). Dependency *resolution* succeeded — only
+  runtime loading failed.
+- **Fix:** drop vLLM from the extras (transformers backend runs Qwen2.5-VL at 1.6 items/s for the
+  7B); purge torchaudio. On a current-driver machine, install vLLM manually for ~3-6x throughput.
+- **Takeaway:** wheel-metadata compatibility ≠ runtime compatibility for CUDA packages. Check what
+  `libcudart` a wheel links before trusting a clean resolve.
+
+## 14. Right-padding silently corrupts batched decoder-only generation
+- **Symptom:** batched Qwen2.5-VL inference produced perfect JSON for exactly one row per batch
+  and garbage (`addCriterion` spam, empty strings) for the rest — validity 3/24.
+- **Root cause:** tokenizers default to right padding; in a batch, every non-longest row then
+  generates its continuation after PAD tokens.
+- **Fix:** `processor.tokenizer.padding_side = "left"` → 24/24 validity.
+- **Takeaway:** the tell is "longest row fine, padded rows garbage." Left-pad for generation,
+  right-pad for encoding.
+
+## 15. A smaller model is not proportionally faster — measure, don't assume
+- **Symptom:** the 3B VLM at the 7B's batch size ran *no faster* (1.4 items/s; 61% GPU util,
+  12 GB of 24 GB used) — a projected 34 h for the 207K-item catalog.
+- **Root cause:** batch size was tuned for the 7B's memory envelope; the 3B under-fills compute
+  and VRAM, and per-batch Python image preprocessing amortizes worse at small batches.
+- **Fix:** `vlm.batch_size: 24` → 100% util, ~3.6 items/s, 16.8 h total. Shard-resume kept the
+  completed work across the restart.
+- **Takeaway:** throughput knobs are per-model-size. Watch util+VRAM for ten minutes before
+  committing to a multi-hour run.
+
+## 16. ANN indexes return −1 sentinels the exact index never produces
+- **Symptom:** first request against the scale category crashed the ranker with
+  `IndexError: index out of range in self` (an embedding lookup).
+- **Root cause:** switching `serving.index` to HNSW at 207K items made FAISS pad unfilled result
+  slots with −1 — its default `efSearch=16` cannot satisfy k=264 — and −1 flowed into
+  `nn.Embedding`. The flat index always returns valid ids, so 25.6K-scale serving never saw one.
+- **Fix:** set `efSearch ≥ k` at index build and filter `c >= 0` in the serving path.
+- **Takeaway:** swapping exact→approximate search changes the *contract* (sentinels, recall), not
+  just the latency. Grep for every consumer of index output when you flip that switch.
+
 ---
 
 ## Modeling insights (not bugs, but worth being able to explain)

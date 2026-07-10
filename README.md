@@ -55,8 +55,11 @@ production systems allocate complexity.
 - ✅ **Week 9 — Semantic IDs**: RQ-VAE codes (100% codebook utilization) as an item-ID replacement —
   **+46% cold-start retrieval** — plus a TIGER-style generative-retrieval demo with constrained
   trie decoding.
-- ▶ **Week 10 — Scale run**: the same configs over Beauty_and_Personal_Care (729K users · 208K
-  items · 6.6M interactions), category-scoped paths, per-stage bottleneck notes.
+- ✅ **Week 10 — Scale run**: the same configs over Beauty_and_Personal_Care (729K users · 208K
+  items · 6.6M interactions, config-only swap). Headline findings replicate: multimodal-vs-ID
+  **+75%**, SID cold-start **+47%**, VLM profile lift grows to +3.1% on the sparser catalog;
+  serving p99 10 ms with HNSW and an 11 GB registry. Bottleneck stories in
+  [`docs/WEEK10.md`](docs/WEEK10.md).
 
 ### Week 2 retrieval — test ablation (temporal leave-last-out)
 

@@ -12,7 +12,12 @@ import numpy as np
 
 
 def build_index(
-    item_emb: np.ndarray, kind: str = "flat", nlist: int = 256, hnsw_m: int = 32, nprobe: int = 8
+    item_emb: np.ndarray,
+    kind: str = "flat",
+    nlist: int = 256,
+    hnsw_m: int = 32,
+    nprobe: int = 8,
+    ef_search: int = 256,
 ):
     import faiss
 
@@ -22,6 +27,8 @@ def build_index(
         index = faiss.IndexFlatIP(dim)
     elif kind == "hnsw":
         index = faiss.IndexHNSWFlat(dim, hnsw_m, faiss.METRIC_INNER_PRODUCT)
+        # default efSearch (16) can't fill k>16 requests — unfilled slots come back as -1
+        index.hnsw.efSearch = ef_search
     elif kind == "ivf":
         index = faiss.IndexIVFFlat(faiss.IndexFlatIP(dim), dim, nlist, faiss.METRIC_INNER_PRODUCT)
         index.train(x)
