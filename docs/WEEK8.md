@@ -27,7 +27,7 @@ Weeks 2–3 showed content features dominate exactly there.
 - vLLM's PyPI wheel links `libcudart.so.13` — unusable on the CUDA 12.8 driver (the torch-cu130
   pitfall repeating one layer up), and its torchaudio dependency broke transformers imports for
   the whole venv. Dropped from the extra; the **transformers backend** runs Qwen2.5-VL-7B at
-  ~1.6 items/s on the 4090 (~4.5 h full catalog) after fixing **left-padding** for batched
+  ≈1.75 items/s on the 4090 (243 min for the full catalog) after fixing **left-padding** for batched
   decoder-only generation (right padding produced garbage for every non-longest row: 3/24 validity
   → 24/24).
 - Profiles are versioned artifacts: model id, validity rate, and wall-clock live in the metadata.

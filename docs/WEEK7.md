@@ -28,12 +28,17 @@ the valid split (α→1 degenerates to retrieval order, so fused ≥ retrieval i
 
 ## Results (test split; NDCG@10 over the retriever's top-200)
 
+> **Provenance:** this table is the experiment *as originally run*, on the Week-2 text+image
+> (897-d) features. The grid re-runs whenever `make week4` executes on the current feature set,
+> and the artifacts on disk reflect the latest run — which flipped the winner (see the caveats).
+> That instability across feature sets is itself a finding.
+
 | ranker | ranker order | GAUC (random negs) |
 |---|---|---|
 | naive (random negatives, Week 3) | 0.081 | 0.858 |
 | hard negatives (poisoned, Week 4) | 0.051 | — |
 | hard negatives, clean pool | 0.060 | 0.791 |
-| **+ retrieval-score feature (serving ckpt)** | **0.075** | 0.825 |
+| **+ retrieval-score feature (valid-best on this run)** | **0.075** | 0.825 |
 | + listwise softmax | 0.064 | 0.647 |
 | + serving-like slate (16 negs, 75% hard from top-50) | 0.032 | 0.636 |
 
@@ -57,9 +62,11 @@ on this metric, and fusion tuning converges to α≈1. Three findings explain wh
    the retrieval score is already close to the information ceiling of this offline setup.
 
 Variant selection happens on the **valid** split; test is only reported. The serving checkpoint
-(`data/rerank/ranker_cascade.pt` + sidecar metadata) is the valid-best variant, the FAISS score
-rides through the live cascade as its input feature (train/serve consistent), and the pre-ranker
-is re-distilled from it (top-50 keeps 70% of its top-10).
+(`data/rerank/ranker_cascade.pt` + sidecar metadata) is always the valid-best variant of the
+current run; the FAISS score is carried through the live cascade whenever that variant uses the
+score feature (the sidecar metadata drives the architecture, so serving stays train-consistent
+either way). The pre-ranker is re-distilled from the winner each run (top-50 kept 70% of the
+teacher's top-10 on this run; 76% on the fused re-run).
 
 ## Run it
 ```bash

@@ -42,12 +42,12 @@ production systems allocate complexity.
 - ✅ **Week 4 — Pre-rank + post-process**: distilled pre-ranker (top-50 keeps 79% of the ranker's
   top-10), MMR/DPP diversity trade-off, and a documented cross-stage cascade-consistency finding.
 - ✅ **Week 5 — Serving**: FastAPI cascade (retrieve→pre-rank→rank→post-process) at **~16 ms p99 on
-  CPU**, FAISS index, ONNX export (parity 4e-6), Dockerfile + docker-compose.
+  CPU**, FAISS index, ONNX export (parity 2.4e-6), Dockerfile + docker-compose.
 - ✅ **Week 6 — MLOps**: GitHub Actions CI (lint + tests), Prometheus `/metrics` in the serving app,
   MLflow experiment tracking.
 - ✅ **Week 7 — Cascade consistency**: hard-negative pool hygiene (held-out positives excluded),
   the retrieval score as a cross-stage ranker feature, listwise-loss variant grid selected on the
-  valid split, score fusion — **+48% cascade NDCG@10** over the poisoned baseline, with the
+  valid split, score fusion — **up to +48% cascade NDCG@10** over the poisoned baseline, with the
   failure modes (reverse label leakage, residual selection bias) documented.
 - ✅ **Week 8 — VLM item understanding**: Qwen2.5-VL structured profiles for every item (100% valid
   JSON, 4 h/25.6K items), profile embeddings as a third content block; the ablation honestly shows
@@ -65,27 +65,28 @@ production systems allocate complexity.
 
 | source | R@10 | R@100 | R@500 | R@100 (cold-start) |
 |---|---|---|---|---|
-| two-tower (multimodal) | 0.062 | **0.210** | **0.404** | 0.044 |
-| two-tower (hybrid) | 0.062 | 0.211 | 0.406 | 0.036 |
+| two-tower (multimodal) | 0.063 | **0.214** | **0.408** | 0.044 |
+| two-tower (hybrid) | 0.063 | 0.216 | 0.415 | 0.041 |
 | two-tower (ID-only) | 0.036 | 0.129 | 0.263 | 0.024 |
 | item2item co-visitation | 0.038 | 0.116 | 0.170 | **0.065** |
 | popularity | 0.025 | 0.097 | 0.233 | 0.000 |
 
-Multimodal-content retrieval beats pure-ID by **+63% R@100** (**+82%** on the cold-start slice)
-with 30× fewer params; i2i is complementary (best on cold-start) — motivating a blended multi-source
-design. FAISS HNSW recovers 81% of exact top-100. Regenerate via `make week2`.
+(Current artifacts — fused text+image+VLM item features.) Multimodal-content retrieval beats
+pure-ID by **+66% R@100** (**+81%** on the cold-start slice) with far fewer parameters; i2i is
+complementary (best on cold-start) — motivating a blended multi-source design. FAISS HNSW recovers
+81% of exact top-100. Regenerate via `make week2`.
 
 ### Week 3 ranking — ablation (GAUC = per-user AUC)
 
 | variant | GAUC | GAUC (cold-start) |
 |---|---|---|
-| **full (DIN + DCN-v2 + MMoE, multimodal)** | **0.858** | **0.706** |
+| **full (DIN + DCN-v2 + MMoE, multimodal)** | **0.858** | **0.701** |
 | − multimodal | 0.761 | 0.347 |
-| − DIN | 0.853 | 0.692 |
-| − DCN-v2 cross | 0.850 | 0.697 |
-| single-task (no MMoE) | 0.858 | 0.708 |
+| − DIN | 0.852 | 0.692 |
+| − DCN-v2 cross | 0.852 | 0.701 |
+| single-task (no MMoE) | 0.856 | 0.703 |
 
-Multimodal features are the dominant driver — **−0.098 GAUC** overall and cold-start **collapses
+Multimodal features are the dominant driver — **−0.097 GAUC** overall and cold-start **collapses
 below random** without them; DIN and DCN-v2 each add ~0.006–0.009; multi-task is neutral on click
 while adding the satisfaction objective for free. (Honest cascade finding: the random-negative ranker
 *degrades* the retriever's hard candidates — sample-selection bias, fixed in Week 4.) `make week3`.

@@ -10,9 +10,9 @@ post-processing → serving, plus VLM item understanding and RQ-VAE semantic IDs
 
 | stage | what | result |
 |---|---|---|
-| **Retrieval** (W2) | two-tower multimodal vs ID-only, R@100 | **0.210 vs 0.129 (+63%)**; **+82%** cold-start |
-| **Ranking** (W3) | DIN+DCN-v2+MMoE, click GAUC | **0.858**; −multimodal 0.761 (cold collapses 0.71→0.35) |
-| **Cascade fix** (W7) | poisoned hard-negs → clean pool + retrieval-score feature, NDCG@10 | **0.051 → 0.075 (+48%)**; fusion α valid-tuned |
+| **Retrieval** (W2) | two-tower multimodal vs ID-only, R@100 | **0.214 vs 0.129 (+66%)**; **+81%** cold-start |
+| **Ranking** (W3) | DIN+DCN-v2+MMoE, click GAUC | **0.858**; −multimodal 0.761 (cold collapses 0.70→0.35) |
+| **Cascade fix** (W7) | poisoned hard-negs → clean pool + retrieval-score feature, NDCG@10 | **0.051 → 0.075 (+48%)** on the original run (fused re-run: 0.063, different winner — see WEEK7) |
 | **VLM profiles** (W8) | Qwen2.5-VL structured item profiles, 25.6K items | **100% JSON validity in 4.0 h**; +1.5% R@100; cold-start neutral (honestly reported) |
 | **Semantic IDs** (W9) | RQ-VAE codes vs raw item IDs, cold-start R@100 | **+46%** (0.0241 → 0.0353); ranker +SID GAUC 0.858→0.861 |
 | **Generative retrieval** (W9) | TIGER-lite demo, R@10 | 0.031 vs two-tower 0.063 — 1M params, no ANN index |
@@ -26,16 +26,19 @@ collaborative signal is absent — the cold-start / long-tail slice.
 ## The two stories interviewers should ask about
 
 **1. The cascade-consistency arc (W3→W7).** A 0.858-GAUC ranker *degraded* the retriever's
-candidate order (NDCG@10 0.109 → 0.081): sample-selection bias — it trained on random negatives
+candidate order (NDCG@10 0.106 → 0.082): sample-selection bias — it trained on random negatives
 and served on retrieval's hard ones. Naive hard-negative mining made it *worse* (0.051): the
 candidate pool masked only train-seen items, so held-out positives were being labelled as
 negatives. The fix — a clean negative pool + the retrieval score as a ranker input — recovered
-+48%. Two second-order findings: a "was-retrieved" membership flag would have been reverse label
-leakage (train positives are masked out of the candidate file), and concentrating hard negatives
-in the top-50 cratered NDCG to 0.032, demonstrating *residual selection bias* — Facebook EBR's
-"mix easy and hard negatives" guidance re-derived from a controlled failure. Fusion-α tuning
-converging to ~1.0 quantifies how retrieval-favoring the offline metric is; the unbiased
-comparison needs online A/B.
++48% on that run (0.051 → 0.075; the fused-feature re-run flips the winning variant and lands at
+0.063 — variant ranking is feature-set-dependent, which is why selection is automated on the
+valid split). Two second-order findings: a "was-retrieved" membership flag would have been reverse
+label leakage (train positives are masked out of the candidate file), and concentrating hard
+negatives in the top-50 cratered NDCG (0.032, and 0.015 on the re-run), demonstrating *residual
+selection bias* — Facebook EBR's "mix easy and hard negatives" guidance re-derived from a
+controlled failure. Fusion-α tuning converging to α≈0.75–1.0, statistically tied with pure
+retrieval order, quantifies how retrieval-favoring the offline metric is; the unbiased comparison
+needs online A/B.
 
 **2. The honest VLM ablation (W8 → W10).** Structured Qwen2.5-VL item profiles (100% valid JSON,
 batched offline inference) added +1.5% overall recall but *nothing* on cold-start — the opposite
@@ -74,7 +77,8 @@ p99 10.1 ms** with an 11 GB registry.
   a retrieval → pre-rank → rank → post-process cascade served at **16 ms p99 on CPU** (FastAPI +
   FAISS + ONNX Runtime, verified torch parity).
 - **Diagnosed and fixed a cascade sample-selection bias**: held-out positives poisoning the
-  hard-negative pool and a missing cross-stage score feature; **+48% cascade NDCG@10**, with
+  hard-negative pool and a missing cross-stage score feature; **up to +48% cascade NDCG@10**
+  (+23% on the fused-feature re-run under automated valid-split variant selection), with
   residual-selection-bias and reverse-label-leakage failure modes documented from controlled
   experiments.
 - Ran **Qwen2.5-VL batch inference over the full catalog** (100% valid structured JSON, 25.6K items

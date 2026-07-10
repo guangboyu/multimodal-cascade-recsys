@@ -45,7 +45,7 @@ dataset/feature dependent, which is precisely why selection is automated on the 
 and the checkpoint ships with its sidecar metadata.
 
 Other scale-specific observations: RQ-VAE collision rate rose 9.6% → 22.9% (the trigger for a 4th
-disambiguation level at bigger catalogs); pre-rank distill consistency dropped 0.70 → 0.43
+disambiguation level at bigger catalogs); pre-rank distill consistency dropped 0.76 → 0.43
 (a 6.8M-param student mimicking over 200K items needs more capacity/epochs — noted, not tuned);
 TIGER-lite R@10 0.008 vs two-tower 0.023 (demo scale shows its limits on a 207K catalog);
 HNSW-vs-exact recall@100 measured 0.69 at default `efSearch` (serving raises it to 256).

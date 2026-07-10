@@ -20,7 +20,7 @@ YouTube/Google's SID line).
 ## Codebook health (the classic VQ failure, instrumented)
 On the fused 1281-d item vectors: **100% utilization** on all 3 levels, perplexity **208/249/252**
 of 256 (near-uniform code usage — no collapse), collision rate 9.6% (resolved by within-group
-popularity at decode; harmless for the feature use-case). Training: ~20 s.
+popularity at decode; harmless for the feature use-case). Training: ~16 s.
 
 ## Results (test split; cold = bottom-quartile target train-popularity)
 
