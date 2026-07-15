@@ -29,7 +29,7 @@ representation carrying most of the quality.
 
 ## Architecture
 
-```
+```text
                   ┌───────────────────── OFFLINE (precompute + train) ─────────────────────┐
  product image ──▶│ CLIP emb ─┐                                                             │
         └─────────│ Qwen2.5-VL ─▶ structured item profile ─▶ MiniLM emb ─┐                  │
@@ -47,6 +47,137 @@ representation carrying most of the quality.
                                        reused downstream as a ranker feature)
 ```
 
+## Quickstart
+
+Requires [`uv`](https://docs.astral.sh/uv/) and, for training, an NVIDIA GPU.
+
+```bash
+uv sync --all-extras        # create .venv and install all stages (faiss, mlflow live in extras)
+
+make data-dev               # capped smoke run (~200k reviews, 500 images) to prove the pipeline
+make data                   # data + features: download, filter, split, encode text/images
+make retrieval              # retrieval: train two-towers + ablation
+make ranking                # ranking: train DIN+DCN-v2+MMoE + ablation
+make rerank                 # cascade fix, pre-ranker distillation, diversity
+make vlm                    # VLM item profiles: generate, encode, ablate
+make sid                    # semantic IDs: RQ-VAE + SID-vs-ID ablation (also: vlmrec tiger-demo)
+make serve                  # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
+```
+
+## Query the recommender
+
+Start the FastAPI cascade, then hit it over HTTP. `make serve-api` runs the API alone;
+`make serve` also opens the Streamlit UI against it.
+
+```bash
+make serve-api                       # FastAPI cascade on http://localhost:8000
+curl localhost:8000/health           # {"status":"ok","n_items":25612,"n_users":94762}
+```
+
+**Recommend for a logged user.** `enrich=true` attaches title / price / image metadata to each
+result so a client can render a grid in one round-trip.
+
+```bash
+curl "localhost:8000/recommend?user_id=42&k=10&enrich=true"
+```
+
+```json
+{
+  "user_idx": 42,
+  "items": [18327, 5012, 20933],
+  "scores": [0.9412, 0.9088, 0.8977],
+  "latency_ms": {"retrieve_ms": 3.1, "prerank_ms": 4.3, "rank_ms": 11.2,
+                 "postprocess_ms": 12.0, "total_ms": 12.04},
+  "results": [
+    {"item_idx": 18327, "parent_asin": "B00XXXXXXX", "title": "…",
+     "price": 39.99, "rating": 4.6, "rating_n": 1284, "image": "B00XXXXXXX.jpg",
+     "score": 0.9412}
+  ]
+}
+```
+
+**Recommend for a brand-new session (cold start, no user id).** POST an ad-hoc basket of item
+ids, oldest first, and get a feed with zero retraining — the online path never looks up a user
+id, so it pools item content for the user vector and reads the behaviour sequence directly.
+
+```bash
+curl -X POST localhost:8000/recommend/session \
+  -H 'content-type: application/json' \
+  -d '{"items": [18327, 442, 9032], "k": 10, "enrich": true}'
+```
+
+**Explain the cascade.** `explain=true` adds a `stages` block (the candidates and scores at
+retrieval → pre-rank → rank → final) and a `journey` showing how each item moved between stages.
+
+```bash
+curl "localhost:8000/recommend?user_id=42&k=10&explain=true"
+```
+
+Other read-only endpoints back the demo UI: `GET /item/{idx}` (full card + VLM profile),
+`GET /similar/{idx}` (item-to-item neighbours), `GET /search?q=...` (title search), and
+`GET /user/{idx}` (history + held-out test item).
+
+### Errors
+
+Ids are validated against the loaded registry; failures come back as standard HTTP status
+codes with a JSON `detail`. Handle `404` (out-of-range id) and `422` (bad query params)
+explicitly — retrying either without changing the request will not help.
+
+```bash
+# 404 — user_id past the last contiguous user index (valid range is in the message)
+curl -s "localhost:8000/recommend?user_id=999999&k=10"
+# {"detail": "user_id out of range (0..94761)"}
+
+# 422 — request fails validation (k must be 1..100, user_id >= 0)
+curl -s "localhost:8000/recommend?user_id=42&k=500"
+# {"detail": [{"loc": ["query", "k"], "msg": "Input should be less than or equal to 100"}]}
+```
+
+```python
+import requests
+
+r = requests.get("http://localhost:8000/recommend", params={"user_id": 42, "k": 10})
+if r.status_code == 404:
+    print("unknown user:", r.json()["detail"])   # cold-start? use POST /recommend/session
+elif r.status_code == 422:
+    print("bad request:", r.json()["detail"])
+else:
+    r.raise_for_status()
+    items = r.json()["items"]
+```
+
+### From Python, in-process
+
+The same cascade runs as a library — load the registry once (towers, FAISS index, ranker, fused
+item content) and call `recommend` directly, no HTTP.
+
+```python
+from vlmrec.serving.registry import load_registry
+from vlmrec.serving.service import recommend, recommend_session
+
+reg = load_registry()                                   # loads all artifacts into memory once
+
+res = recommend(reg, user_idx=42, k_final=10, diversity="mmr")
+print(res["items"])                                     # [18327, 5012, 20933, ...]
+print(res["scores"])                                    # [0.9412, 0.9088, ...]
+print(res["latency_ms"]["total_ms"])                    # 12.04
+
+# Cold start: recommend from an ad-hoc history, no user id required
+cold = recommend_session(reg, history=[18327, 442, 9032], k_final=10)
+print(cold["items"])
+```
+
+### Run individual stages / override config
+
+Every stage is one CLI command driven by a single YAML config; any key can be overridden inline
+and the override is logged for reproducibility.
+
+```bash
+uv run vlmrec retrieval-train                                   # a single stage
+uv run vlmrec data -o dataset.category=Baby_Products dataset.max_reviews=500000
+uv run vlmrec retrieval-train --config configs/scale.yaml       # the large-catalog profile
+```
+
 ## Interactive demo
 
 ![Replaying a real user through the live cascade: history, funnel, recommendations, and the VLM item inspector](docs/demo.gif)
@@ -54,12 +185,12 @@ representation carrying most of the quality.
 A Streamlit UI over the live serving API. Pick a user and watch the cascade build their feed:
 
 ```bash
-make serve   # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
+make serve                  # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
+make demo                   # UI only (http://localhost:8501, needs an API already running)
 ```
 
 `make serve` boots the FastAPI cascade, waits for it to load, then opens the UI pointed at it —
-one command, one terminal. (Or `docker compose up` for the containerized pair.) Need the pieces
-apart? `make serve-api` runs the API alone and `make demo` the UI alone.
+one command, one terminal. (Or `docker compose up` for the containerized pair.)
 
 Two modes run against the same live cascade:
 
@@ -68,12 +199,7 @@ Two modes run against the same live cascade:
   latency, a chart of how each stage re-ordered the candidates, and an item inspector showing
   the VLM profile and nearest neighbours.
 - **Build your own taste.** Search the catalog, add a few items, and get a feed for that
-  brand-new session with zero retraining. This works because the online path never looks up a
-  user id: the user embedding is pooled item content and the ranker reads the behaviour
-  sequence, the same property behind the cold-start results.
-
-The demo is backed by read-only metadata endpoints (`/user`, `/item`, `/similar`, `/search`,
-`/recommend?explain=true` stage traces). The scoring path itself is untouched.
+  brand-new session with zero retraining (the `/recommend/session` path above).
 
 ## Pipeline
 
@@ -165,53 +291,25 @@ through a config swap alone. The headline findings replicate: multimodal vs ID +
 cold-start +47%, VLM profile lift grows to +3.1%, and the cold-start null replicates too.
 Serving holds 10 ms p99 with HNSW and an 11 GB in-memory registry.
 
-## Quickstart
-
-Requires [`uv`](https://docs.astral.sh/uv/) and, for training, an NVIDIA GPU.
-
-```bash
-uv sync --all-extras        # create .venv and install all stages (faiss, mlflow live in extras)
-
-make data-dev              # capped smoke run (~200k reviews, 500 images) to prove the pipeline
-make data                  # data + features: download, filter, split, encode text/images
-make retrieval                  # retrieval: train two-towers + ablation
-make ranking                  # ranking: train DIN+DCN-v2+MMoE + ablation
-make rerank                  # cascade fix, pre-ranker distillation, diversity
-make vlm                  # VLM item profiles: generate, encode, ablate
-make sid                  # semantic IDs: RQ-VAE + SID-vs-ID ablation (also: vlmrec tiger-demo)
-make serve                  # API (:8000) + Streamlit UI (:8501) together — Ctrl-C stops both
-make serve-api              # API only (http://localhost:8000)
-make demo                   # UI only  (http://localhost:8501, needs an API running)
-```
-
-Individual stages are plain CLI commands (`uv run vlmrec download`, `build-interactions`,
-`encode-text`, and so on), and any config key can be overridden inline:
-
-```bash
-uv run vlmrec data -o dataset.category=Baby_Products dataset.max_reviews=500000
-
-# run any stage against the large-catalog profile
-uv run vlmrec retrieval-train --config configs/scale.yaml
-```
-
 ## Repository layout
 
-```
-configs/                 # config.yaml (single source of truth) + scale.yaml (large catalog)
-src/vlmrec/
-  data/                  # download, interaction building, image fetching
-  features/              # text (sentence-transformers) and image (CLIP) encoders
-  vlm/                   # Qwen2.5-VL profile generation + encoding
-  retrieval/             # two-tower, FAISS index, i2i, eval
-  ranking/               # DIN + DCN-v2 + MMoE ranker
-  rerank/                # pre-ranker distillation, cascade fix, MMR/DPP
-  sid/                   # RQ-VAE semantic IDs + TIGER-style demo
-  serving/               # FastAPI app, registry, ONNX export, catalog, Streamlit demo
-  mlops/                 # MLflow run logging
-tests/                   # pure-logic unit tests (no network or GPU)
-data/                    # artifacts (gitignored)
-docs/                    # RESULTS, numbered per-stage notes, PITFALLS
-```
+Configs live in `configs/` (`config.yaml` is the single source of truth; `scale.yaml` is the
+large-catalog profile). Source is one package per pipeline stage under `src/vlmrec/`:
+
+| Module | Responsibility |
+|---|---|
+| `data/` | download, interaction building, image fetching |
+| `features/` | text (sentence-transformers) and image (CLIP) encoders |
+| `vlm/` | Qwen2.5-VL profile generation + encoding |
+| `retrieval/` | two-tower, FAISS index, i2i, eval |
+| `ranking/` | DIN + DCN-v2 + MMoE ranker |
+| `rerank/` | pre-ranker distillation, cascade fix, MMR/DPP |
+| `sid/` | RQ-VAE semantic IDs + TIGER-style demo |
+| `serving/` | FastAPI app, registry, ONNX export, catalog, Streamlit demo |
+| `mlops/` | MLflow run logging |
+
+Tests (`tests/`) are pure-logic unit tests with no network or GPU. Artifacts land in `data/`
+(gitignored); committed writeups live in `docs/`.
 
 ## Dataset
 
