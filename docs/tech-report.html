@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VLM-Rec Technical Report</title>
+<meta name="description" content="A multimodal recommendation cascade on Amazon Reviews 2023, and a stage-matched measurement of where generative retrieval loses recall.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #ffffff; --ink: #1a1a1a; --ink2: #444444; --muted: #6b6b6b;
+  --hair: #e2e2e2; --rule: #1a1a1a; --accent: #2b67a6; --neutral: #8a8a8a;
+  --endp: #d4d4d4; --loss: #4a4a4a; --band: #e4e4e4; --code: #f4f4f2;
+  --m1: #cddbec; --m2: #93b2d6; --m3: #5a86bb;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161616; --ink: #e5e5e5; --ink2: #c4c4c4; --muted: #9b9b9b;
+    --hair: #303030; --rule: #d6d6d6; --accent: #5f98dc; --neutral: #6a6a6a;
+    --endp: #474747; --loss: #c2c2c2; --band: #2c2c2c; --code: #1f1f1f;
+    --m1: #2b3d55; --m2: #3b5d88; --m3: #4d77ac;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #161616; --ink: #e5e5e5; --ink2: #c4c4c4; --muted: #9b9b9b;
+  --hair: #303030; --rule: #d6d6d6; --accent: #5f98dc; --neutral: #6a6a6a;
+  --endp: #474747; --loss: #c2c2c2; --band: #2c2c2c; --code: #1f1f1f;
+    --m1: #2b3d55; --m2: #3b5d88; --m3: #4d77ac;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-size: 17px; line-height: 1.56; font-optical-sizing: auto;
+  font-variant-numeric: lining-nums;
+}
+main { max-width: 44rem; margin: 0 auto; padding-block: 3.4rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+header { text-align: center; margin-bottom: 2rem; }
+h1 { font-size: 1.72rem; line-height: 1.28; font-weight: 600; margin: 0 0 1rem; }
+.author { font-size: 1.06rem; margin: 0; }
+.meta { font-size: .9rem; color: var(--muted); margin: .25rem 0 0; }
+header p { text-align: center; text-indent: 0 !important; }
+
+.abstract { margin: 2rem 2.4rem 2.2rem; font-size: .94rem; line-height: 1.52; }
+.abstract h2 { text-align: center; font-size: .98rem; margin: 0 0 .45rem; }
+@media (max-width: 620px) { .abstract { margin: 1.6rem 0; } }
+
+h1, h2, h3 { text-wrap: balance; }
+h2 { font-size: 1.2rem; font-weight: 600; margin: 2.5rem 0 .75rem; line-height: 1.3; }
+h3 { font-size: 1.01rem; font-weight: 600; margin: 1.6rem 0 .45rem; }
+.n { display: inline-block; min-width: 2.1em; }
+h3 .n { min-width: 2.6em; }
+p { margin: 0; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+p + p { text-indent: 1.5em; }
+.runin { font-weight: 600; }
+ol.plain, ul.plain { margin: .7rem 0 .7rem; padding-left: 1.6rem; }
+ol.plain li, ul.plain li { margin: .3rem 0; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+ol + p, ul + p, figure + p, .eqn + p { text-indent: 0; }
+p.cont { text-indent: 0; }
+i.v { font-style: italic; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .84em; }
+pre { background: var(--code); padding: .85rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55; margin: 1rem 0; }
+pre code { font-size: inherit; }
+
+.eqn { display: flex; align-items: center; margin: 1rem 0 1.05rem; }
+.eqn math { flex: 1; font-size: 1.06em; }
+.eqn .no { width: 2.6em; text-align: right; }
+math { font-family: "STIX Two Math", "Latin Modern Math", "Cambria Math", "Source Serif 4", serif; }
+
+figure { margin: 1.9rem 0; }
+figcaption, .cap { font-size: .86rem; line-height: 1.46; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+figcaption { margin-top: .7rem; }
+.cap { margin-bottom: .55rem; }
+.lbl { font-weight: 600; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; margin: 0 auto; font-size: .85rem; line-height: 1.35;
+        font-variant-numeric: tabular-nums lining-nums; }
+thead tr:first-child th { border-top: 1.3px solid var(--rule); }
+thead tr:last-child th { border-bottom: .7px solid var(--rule); }
+tbody tr:last-child td { border-bottom: 1.3px solid var(--rule); }
+tr.mid td { border-top: .7px solid var(--rule); }
+tr.grp td { font-weight: 600; padding-top: .7rem; border-top: .7px solid var(--hair); }
+table.params td:first-child { white-space: nowrap; padding-right: 1.2rem; }
+th, td { padding: .3rem .65rem; text-align: right; white-space: nowrap; vertical-align: top; }
+th { font-weight: 600; }
+th:first-child, td:first-child, td.l, th.l { text-align: left; }
+td.wrap, th.wrap { white-space: normal; }
+table.notes td, table.notes th { white-space: normal; text-align: left; }
+table.notes { width: 100%; }
+.ci { font-size: .8em; color: var(--muted); }
+.sub { color: var(--muted); font-style: italic; }
+
+/* figures */
+.fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.fig text { font-family: "Source Sans 3", "Helvetica Neue", Arial, sans-serif; fill: var(--ink); }
+.scroll { overflow-x: auto; }
+.scroll > svg { min-width: 560px; }
+.scroll > svg.arch { min-width: 680px; }
+.wide { position: relative; left: 50%; transform: translateX(-50%); width: min(980px, calc(100vw - 32px)); }
+@media print { .wide { position: static; transform: none; width: auto; } }
+.row { display: flex; flex-wrap: wrap; justify-content: center; gap: .4rem 1rem; }
+.row > svg { width: auto; min-width: 0; }
+.row.bridge > svg { flex: 1 1 200px; max-width: 250px; }
+.row.cap2 > svg { flex: 1 1 270px; max-width: 330px; }
+svg.legend { max-width: 470px; margin: .5rem auto 0; }
+.tk { font-size: 9.5px; fill: var(--ink2) !important; }
+.pm { font-size: 8.5px; fill: var(--muted) !important; }
+.pt { font-size: 10.5px; font-weight: 600; }
+.pl { font-size: 10.5px; font-weight: 600; }
+.b { font-weight: 600; }
+.num { font-size: 9.5px; fill: var(--ink2) !important; }
+.sc { font-size: 8.5px; letter-spacing: .09em; fill: var(--muted) !important; }
+.lab { font-size: 9.5px; fill: var(--ink2) !important; }
+.bx { font-size: 9.5px; fill: var(--ink2) !important; }
+.bx.b { font-size: 10px; fill: var(--ink) !important; }
+.box { fill: var(--paper); stroke: var(--ink2); stroke-width: .8; }
+.ln { fill: none; stroke: var(--ink2); stroke-width: .8; }
+.bus { fill: none; stroke: var(--ink2); stroke-width: .8; stroke-dasharray: 3 2.5; }
+.div { stroke: var(--hair); stroke-width: 1; stroke-dasharray: 2 3; }
+.ah { fill: var(--ink2); }
+.ax { stroke: var(--ink2); stroke-width: .7; }
+.grid { stroke: var(--hair); stroke-width: .6; }
+.conn { stroke: var(--muted); stroke-width: .6; stroke-dasharray: 1.5 1.5; }
+.brk { fill: none; stroke: var(--ink2); stroke-width: .7; }
+.endp { fill: var(--endp); stroke: none; }
+.loss { fill: var(--loss); stroke: none; }
+.gain { fill: url(#hatch); stroke: var(--loss); stroke-width: .8; }
+.hatch-bg { fill: var(--paper); }
+.hatch-ln { stroke: var(--loss); stroke-width: 1.1; }
+.eqv { font-size: 10px; fill: var(--ink) !important; }
+.ln-ct { fill: none; stroke: var(--neutral); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.ln-ar { fill: none; stroke: var(--accent); stroke-width: 1.8; }
+.ln-ink { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.mk-ct { fill: var(--paper); stroke: var(--neutral); stroke-width: 1.5; }
+.mk-ar { fill: var(--accent); stroke: var(--paper); stroke-width: 1.5; }
+.mk-ink { fill: var(--ink); stroke: var(--paper); stroke-width: 1.5; }
+.mk-open { fill: var(--paper); stroke: var(--ink); stroke-width: 1.3; }
+.ring { fill: none; stroke: var(--ink2); stroke-width: .8; }
+.band { fill: var(--band); stroke: none; }
+.zero { stroke: var(--ink); stroke-width: .9; }
+.zero-d { stroke: var(--ink2); stroke-width: .7; stroke-dasharray: 2 2; }
+.ci { stroke: var(--ink); stroke-width: 1.3; }
+svg .ci { stroke: var(--ink); }
+svg rect:hover, svg circle:hover { opacity: .78; }
+
+ol.refs { font-size: .85rem; line-height: 1.45; padding-left: 2rem; margin: .4rem 0; }
+ol.refs li { margin: .28rem 0; }
+footer { margin-top: 3rem; font-size: .8rem; color: var(--muted); text-align: center; }
+
+@media (max-width: 620px) {
+  body { font-size: 16px; }
+  h1 { font-size: 1.45rem; }
+  p { text-align: left; }
+}
+@media print {
+  body { font-size: 10.5pt; }
+  main { max-width: none; padding-block: 0; padding-left: 0; padding-right: 0; }
+  a { color: inherit; }
+  figure, .tbl { break-inside: avoid; }
+  #tA1, #tA1 .tbl, #t12, #t12 .tbl { break-inside: auto; }
+  tr { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  .scroll > svg, .scroll > svg.arch { min-width: 0; }
+  @page { size: A4; margin: 18mm 16mm; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" class="hatch-bg"/><line x1="0" y1="0" x2="0" y2="4" class="hatch-ln"/></pattern><marker id="arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0.8 L7.5,4 L0,7.2 Z" class="ah"/></marker></defs></svg>
+<main>
+
+<header>
+<h1>VLM-Rec: A Multimodal Recommendation Cascade and a Stage-Matched Audit of Generative Retrieval</h1>
+<p class="author">Guangbo Yu</p>
+<p class="meta">Technical report, November 2026</p>
+<p class="meta"><a href="https://github.com/guangboyu/multimodal-cascade-recsys">github.com/guangboyu/multimodal-cascade-recsys</a></p>
+</header>
+
+<section class="abstract">
+<h2>Abstract</h2>
+<p>We present VLM-Rec, a recommender built end to end on Amazon Reviews 2023 that follows the industrial cascade of retrieval, pre-ranking, ranking, post-processing and online serving. Item representation comes from frozen text and image encoders together with structured item profiles written by a vision-language model, and every design choice is tested by a controlled ablation. On Video_Games (95K users, 25.6K items), a content-only two-tower retriever reaches Recall@100 of 0.214 against 0.129 for an ID-only tower (+66%, and +81% on the cold slice), and removing content features from the ranker costs 0.097 GAUC. A diagnosis of cascade sample-selection bias, with two targeted repairs, lifts cascade NDCG@10 by up to 48%. The full cascade serves at 16&nbsp;ms p99 on CPU and runs on a catalog eight times larger (208K items) through a configuration change alone, where the headline comparisons replicate. We then use the system as a laboratory for the question a team adopting semantic-ID generative retrieval must answer: which stage loses the recall? Because recommendation catalogs are finite, catalog-wide lazy-exact top-<i>K</i> ranking of an autoregressive retriever is computable, which lets us measure a stage-matched ladder from the dense retriever to the deployed trie-beam system on three catalogs and three seeds. Content quantization is the largest gross entry (58–92% of the Recall@10 gap), trie renormalization is equivalence-negligible, cutoff-matched beam search is secondary but nonzero (5–19%), and on Video_Games the recall difference between parameter-matched contrastive and autoregressive heads changes sign between decoder widths of 3.6M and 13.4M parameters.</p>
+</section>
+
+<!-- ============================================================ 1 -->
+<h2 id="s1"><span class="n">1</span>Introduction</h2>
+
+<p>Production recommenders are cascades. A cheap retriever narrows a large catalog to a few hundred candidates, heavier models re-order them, and business rules shape the final slate. Public work concentrates on the ranking model, yet every stage of a cascade reads the same item representation, and that representation decides what the system can do for items with little interaction history. VLM-Rec puts multimodal item understanding at the center of a complete cascade and measures, stage by stage, what each component contributes.</p>
+
+<p>The second half of the report takes up a question this kind of system raises directly. Generative retrieval with semantic IDs, in the style of TIGER <a href="#r1">[1]</a>, replaces the nearest-neighbour index with a decoder that writes the next item's codes. Our own TIGER-style model reaches half of the two-tower's Recall@10 with no index at all (<a href="#s4-5">Section 4.5</a>). A team deciding whether to migrate needs to know which stage gave up the other half, and an end-to-end comparison cannot say, because it changes the tokenizer, the encoder, the training objective and the decoder together. The stage-level measurement is available, and <a href="#s5">Section 5</a> takes it.</p>
+
+<p>The report makes four contributions.</p>
+<ol class="plain">
+<li>A complete, configuration-driven cascade: two-tower retrieval over FAISS with a co-visitation channel, a distilled pre-ranker, a DIN + DCN-v2 + MMoE ranker, MMR and DPP post-processing, and a FastAPI service that answers in 16&nbsp;ms p99 on CPU and scales from 25.6K to 208K items by editing one file (<a href="#s3">Section 3</a>, <a href="#s4-7">Section 4.7</a>).</li>
+<li>Controlled measurements of what multimodal content is worth at each stage, including VLM-generated item profiles and RQ-VAE semantic IDs, replicated on a second category (<a href="#s4">Section 4</a>).</li>
+<li>A diagnosis of cascade inconsistency that separates two mechanisms, label poisoning by held-out positives and a missing cross-stage score, and repairs both (<a href="#s4-3">Section 4.3</a>).</li>
+<li>A catalog-wide lazy-exact top-<i>K</i> instrument and a stage-matched loss ledger for the dense-to-generative retrieval gap on three catalogs, with hierarchical bootstrap confidence intervals on every entry (<a href="#s5">Section 5</a>).</li>
+</ol>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2"><span class="n">2</span>Data and item representation</h2>
+
+<h3 id="s2-1"><span class="n">2.1</span>Catalogs and splits</h3>
+
+<p>We use Amazon Reviews 2023 <a href="#r2">[2]</a>. Video_Games is the development catalog: its listings pair distinctive box art with rich text, and its size permits fast iteration on one GPU. Beauty_and_Personal_Care is the scale catalog, eight times larger in items and 7.7 times sparser. The loss-ledger study adds the Amazon-2014 Beauty split used by TIGER, whose user, item and interaction counts our preprocessing reproduces exactly. Every split is temporal leave-last-out: each user's last interaction is the test target and the second-to-last is the validation target. <a href="#t1">Table 1</a> summarizes the catalogs.</p>
+
+<p>Throughout the system results, the <em>cold slice</em> is the set of test users whose target item falls in the bottom quartile of training popularity. It isolates the long tail, where collaborative signal is weakest and content has to carry the prediction.</p>
+
+<figure id="t1">
+<div class="cap"><span class="lbl">Table 1.</span> Catalogs after 5-core filtering. Video_Games splits into 625,062 / 94,762 / 94,762 train, validation and test interactions, and 99.98% of its items have an image. The two 2023 catalogs come from Amazon Reviews 2023 and are used throughout; Amazon-2014 Beauty uses the TIGER split and enters only the loss ledger of Section 5.</div>
+<div class="tbl"><table>
+<thead><tr><th>Catalog</th><th>Raw reviews</th><th>Users</th><th>Items</th><th>Interactions</th><th>Density</th></tr></thead>
+<tbody>
+<tr><td>Video_Games</td><td>4.62M</td><td>94,762</td><td>25,612</td><td>814,586</td><td>0.034%</td></tr>
+<tr><td>Beauty_and_Personal_Care</td><td>23.9M</td><td>729,576</td><td>207,649</td><td>6,624,441</td><td>0.0044%</td></tr>
+<tr><td>Amazon-2014 Beauty</td><td>–</td><td>22,363</td><td>12,101</td><td>198,502</td><td>0.073%</td></tr>
+</tbody></table></div>
+</figure>
+
+<h3 id="s2-2"><span class="n">2.2</span>Content features</h3>
+
+<p>Each item is described by three frozen embeddings, computed once and aligned by item index, so row <i>i</i> of every matrix refers to the same product. Listing text (title, description and feature bullets) is encoded with all-MiniLM-L6-v2 <a href="#r3">[3]</a> into 384 dimensions. The main product image is encoded with CLIP ViT-B/32 <a href="#r4">[4]</a> into 512 dimensions, with a zero vector and a flag for the few items without one. A structured profile written by a vision-language model is encoded into a further 384 dimensions. Concatenated, these form a 1,281-dimensional content vector that every stage of the cascade shares.</p>
+
+<p>Keeping the encoders frozen is deliberate. It makes every downstream ablation cheap, and it attributes a gain to the information an encoder supplies rather than to a fine-tuning budget.</p>
+
+<h3 id="s2-3"><span class="n">2.3</span>VLM item profiles</h3>
+
+<p>Qwen2.5-VL-7B <a href="#r5">[5]</a> reads each item's image and title and writes a JSON profile with a fixed schema: refined category, sub-genre, visual style, key attributes, target audience, tone, quality cues and a one-line summary. A deterministic template turns the profile into text, which passes through the same MiniLM encoder as the raw listing, so the profile block differs from the text block only in what the VLM said. Generation is batched, checkpointed in shards with atomic writes, and resumable after interruption. The full Video_Games catalog took 243 minutes on one RTX 4090 and produced valid JSON for 100% of items; the Beauty catalog took 16.8 hours with Qwen2.5-VL-3B at 99.76% validity.</p>
+
+<p>Throughput and validity both depend on details of batched generation. Decoder-only models must be padded on the left: with the tokenizer's default right padding, every row but the longest in a batch continues after pad tokens, and validity fell to 3 of 24 rows. Batch size must also be re-tuned per model size. The 3B model at the 7B model's batch size left the GPU 61% utilized; a batch of 24 brought utilization to 100% and throughput up 2.5 times.</p>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3"><span class="n">3</span>System</h2>
+
+<figure id="f1" class="fig">
+<div class="scroll wide"><svg viewBox="0 0 510.264 274.968" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="arch" role="img" aria-labelledby="f1t" stroke-linejoin="round" stroke-linecap="butt"><title id="f1t">VLM-Rec system: offline item understanding and the online cascade</title><g id="figure_1"><g id="patch_1"><path d="M 0 274.968 
+L 510.264 274.968 
+L 510.264 0 
+L 0 0 
+L 0 274.968 
+z
+" style="fill: none"/></g><g id="axes_1"><g id="patch_2"><path d="M 68.040371 245.770367 
+L 79.379258 245.770367 
+L 160.168825 250.242234 
+L 182.846598 250.242234 
+L 263.636165 251.519786 
+L 286.313938 251.519786 
+L 367.103505 251.519786 
+L 389.781278 251.519786 
+L 470.570845 252.364203 
+L 485.878342 252.364203 
+L 485.878342 257.885694 
+L 470.570845 257.885694 
+L 389.781278 258.730111 
+L 367.103505 258.730111 
+L 286.313938 258.730111 
+L 263.636165 258.730111 
+L 182.846598 260.007663 
+L 160.168825 260.007663 
+L 79.379258 264.47953 
+L 68.040371 264.47953 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--endp)"/></g><g id="patch_3"><path d="M 7.093856 117.640948 
+L 76.544536 117.640948 
+Q 79.379258 117.640948 79.379258 114.806227 
+L 79.379258 21.260412 
+Q 79.379258 18.425691 76.544536 18.425691 
+L 7.093856 18.425691 
+Q 4.259134 18.425691 4.259134 21.260412 
+L 4.259134 114.806227 
+Q 4.259134 117.640948 7.093856 117.640948 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--endp); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_4"><path d="M 98.938837 46.205963 
+L 187.382153 46.205963 
+Q 189.933402 46.205963 189.933402 43.654713 
+L 189.933402 27.213328 
+Q 189.933402 24.662078 187.382153 24.662078 
+L 98.938837 24.662078 
+Q 96.387588 24.662078 96.387588 27.213328 
+L 96.387588 43.654713 
+Q 96.387588 46.205963 98.938837 46.205963 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_5"><path d="M 98.938837 75.97054 
+L 187.382153 75.97054 
+Q 189.933402 75.97054 189.933402 73.419291 
+L 189.933402 56.977905 
+Q 189.933402 54.426656 187.382153 54.426656 
+L 98.938837 54.426656 
+Q 96.387588 54.426656 96.387588 56.977905 
+L 96.387588 73.419291 
+Q 96.387588 75.97054 98.938837 75.97054 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_6"><path d="M 98.938837 109.136784 
+L 187.382153 109.136784 
+Q 189.933402 109.136784 189.933402 106.585534 
+L 189.933402 87.309427 
+Q 189.933402 84.758177 187.382153 84.758177 
+L 98.938837 84.758177 
+Q 96.387588 84.758177 96.387588 87.309427 
+L 96.387588 106.585534 
+Q 96.387588 109.136784 98.938837 109.136784 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_7"><path d="M 98.371893 134.365806 
+L 309.842128 134.365806 
+Q 311.826433 134.365806 311.826433 132.381501 
+L 311.826433 116.790532 
+Q 311.826433 114.806227 309.842128 114.806227 
+L 98.371893 114.806227 
+Q 96.387588 114.806227 96.387588 116.790532 
+L 96.387588 132.381501 
+Q 96.387588 134.365806 98.371893 134.365806 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--code)"/></g><g id="patch_8"><path d="M 388.080445 49.607629 
+L 503.453616 49.607629 
+Q 506.004866 49.607629 506.004866 47.056379 
+L 506.004866 23.811662 
+Q 506.004866 21.260412 503.453616 21.260412 
+L 388.080445 21.260412 
+Q 385.529196 21.260412 385.529196 23.811662 
+L 385.529196 47.056379 
+Q 385.529196 49.607629 388.080445 49.607629 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_9"><path d="M 388.080445 90.711093 
+L 503.453616 90.711093 
+Q 506.004866 90.711093 506.004866 88.159843 
+L 506.004866 63.497765 
+Q 506.004866 60.946515 503.453616 60.946515 
+L 388.080445 60.946515 
+Q 385.529196 60.946515 385.529196 63.497765 
+L 385.529196 88.159843 
+Q 385.529196 90.711093 388.080445 90.711093 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_10"><path d="M 81.930507 216.856206 
+L 157.617575 216.856206 
+Q 160.168825 216.856206 160.168825 214.304957 
+L 160.168825 176.886631 
+Q 160.168825 174.335381 157.617575 174.335381 
+L 81.930507 174.335381 
+Q 79.379258 174.335381 79.379258 176.886631 
+L 79.379258 214.304957 
+Q 79.379258 216.856206 81.930507 216.856206 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.7; stroke-linejoin: miter"/></g><g id="patch_11"><path d="M 185.397847 216.856206 
+L 261.084915 216.856206 
+Q 263.636165 216.856206 263.636165 214.304957 
+L 263.636165 176.886631 
+Q 263.636165 174.335381 261.084915 174.335381 
+L 185.397847 174.335381 
+Q 182.846598 174.335381 182.846598 176.886631 
+L 182.846598 214.304957 
+Q 182.846598 216.856206 185.397847 216.856206 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.7; stroke-linejoin: miter"/></g><g id="patch_12"><path d="M 288.865188 216.856206 
+L 364.552256 216.856206 
+Q 367.103505 216.856206 367.103505 214.304957 
+L 367.103505 176.886631 
+Q 367.103505 174.335381 364.552256 174.335381 
+L 288.865188 174.335381 
+Q 286.313938 174.335381 286.313938 176.886631 
+L 286.313938 214.304957 
+Q 286.313938 216.856206 288.865188 216.856206 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.7; stroke-linejoin: miter"/></g><g id="patch_13"><path d="M 392.332528 216.856206 
+L 468.019596 216.856206 
+Q 470.570845 216.856206 470.570845 214.304957 
+L 470.570845 176.886631 
+Q 470.570845 174.335381 468.019596 174.335381 
+L 392.332528 174.335381 
+Q 389.781278 174.335381 389.781278 176.886631 
+L 389.781278 214.304957 
+Q 389.781278 216.856206 392.332528 216.856206 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.7; stroke-linejoin: miter"/></g><g clip-path="url(#pc565d3a3d7)"><image xlink:href="data:image/png;base64,
+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" id="imagef89c4f8852" transform="scale(1 -1) translate(0 -46.32)" x="9.36" y="-22.728" width="36.96" height="46.32"/></g><g id="patch_14"><path d="M 79.379258 35.434021 
+Q 87.883423 35.434021 95.716767 35.434021 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 93.516767 34.334021 
+L 95.716767 35.434021 
+L 93.516767 36.534021 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_15"><path d="M 79.379258 65.198598 
+Q 87.883423 65.198598 95.716767 65.198598 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 93.516767 64.098598 
+L 95.716767 65.198598 
+L 93.516767 66.298598 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_16"><path d="M 79.379258 96.94748 
+Q 87.883423 96.94748 95.716767 96.94748 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 93.516767 95.84748 
+L 95.716767 96.94748 
+L 93.516767 98.04748 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="line2d_1"><path d="M 141.743134 114.806227 
+L 141.743134 109.136784 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--muted); stroke-width: 0.5"/></g><g id="patch_17"><path d="M 189.933402 35.434021 
+Q 194.752429 48.530435 199.339802 60.997296 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 199.612409 58.552774 
+L 199.339802 60.997296 
+L 197.547749 59.312498 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_18"><path d="M 189.933402 65.198598 
+Q 194.752429 65.198598 198.900635 65.198598 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 196.700635 64.098598 
+L 198.900635 65.198598 
+L 196.700635 66.298598 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_19"><path d="M 189.933402 96.94748 
+Q 194.752429 82.977972 199.352695 69.642612 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 197.59539 71.363623 
+L 199.352695 69.642612 
+L 199.675121 72.081063 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_20"><path d="M 208.642565 65.198598 
+Q 216.296313 65.198598 223.279241 65.198598 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 221.079241 64.098598 
+L 223.279241 65.198598 
+L 221.079241 66.298598 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="line2d_2"><path d="M 358.63707 65.198598 
+L 367.141235 65.198598 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6"/></g><g id="line2d_3"><path d="M 367.141235 65.198598 
+L 367.141235 65.198598 
+L 367.141235 35.434021 
+L 379.859753 35.434021 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6"/></g><g id="patch_21"><path d="M 379.292808 35.434021 
+Q 382.411002 35.434021 384.858375 35.434021 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 382.658375 34.334021 
+L 384.858375 35.434021 
+L 382.658375 36.534021 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="line2d_4"><path d="M 367.141235 65.198598 
+L 367.141235 65.198598 
+L 367.141235 75.97054 
+L 379.859753 75.97054 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6"/></g><g id="patch_22"><path d="M 379.292808 75.97054 
+Q 382.411002 75.97054 384.858375 75.97054 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 382.658375 74.87054 
+L 384.858375 75.97054 
+L 382.658375 77.07054 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="line2d_5"><path d="M 1.424412 140.035249 
+L 508.839588 140.035249 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 0.6,0.8; stroke-dashoffset: 0; stroke: var(--endp); stroke-width: 0.5"/></g><g id="patch_23"><path d="M 4.259134 215.438845 
+L 12.196355 215.438845 
+L 12.196355 207.501625 
+L 4.259134 207.501625 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--endp)"/></g><g id="patch_24"><path d="M 13.897188 215.438845 
+L 21.834408 215.438845 
+L 21.834408 207.501625 
+L 13.897188 207.501625 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--endp)"/></g><g id="patch_25"><path d="M 23.535241 215.438845 
+L 31.472462 215.438845 
+L 31.472462 207.501625 
+L 23.535241 207.501625 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--endp)"/></g><g id="patch_26"><path d="M 66.906482 195.595794 
+Q 73.14287 195.595794 78.708437 195.595794 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 76.508437 194.495794 
+L 78.708437 195.595794 
+L 76.508437 196.695794 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_27"><path d="M 160.168825 195.595794 
+Q 171.507711 195.595794 182.175778 195.595794 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 179.975778 194.495794 
+L 182.175778 195.595794 
+L 179.975778 196.695794 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_28"><path d="M 263.636165 195.595794 
+Q 274.975052 195.595794 285.643118 195.595794 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 283.443118 194.495794 
+L 285.643118 195.595794 
+L 283.443118 196.695794 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_29"><path d="M 367.103505 195.595794 
+Q 378.442392 195.595794 389.110458 195.595794 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 386.910458 194.495794 
+L 389.110458 195.595794 
+L 386.910458 196.695794 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_30"><path d="M 470.570845 195.595794 
+Q 478.224594 195.595794 485.207522 195.595794 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 483.007522 194.495794 
+L 485.207522 195.595794 
+L 483.007522 196.695794 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="line2d_6"><path d="M 330.535596 92.97887 
+L 330.535596 161.01219 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8"/></g><g id="line2d_7"><path d="M 445.767031 108.853311 
+L 445.767031 161.01219 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8"/></g><g id="line2d_8"><path d="M 119.774041 161.01219 
+L 445.767031 161.01219 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8"/></g><g id="patch_31"><path d="M 119.774041 161.01219 
+Q 119.774041 167.673786 119.774041 173.440954 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/><path d="M 120.874041 171.240954 
+L 119.774041 173.440954 
+L 118.674041 171.240954 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--accent); stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/></g><g id="patch_32"><path d="M 223.241381 161.01219 
+Q 223.241381 167.673786 223.241381 173.440954 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/><path d="M 224.341381 171.240954 
+L 223.241381 173.440954 
+L 222.141381 171.240954 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--accent); stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/></g><g id="patch_33"><path d="M 326.708722 161.01219 
+Q 326.708722 167.673786 326.708722 173.440954 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/><path d="M 327.808722 171.240954 
+L 326.708722 173.440954 
+L 325.608722 171.240954 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--accent); stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/></g><g id="patch_34"><path d="M 430.176062 161.01219 
+Q 430.176062 167.673786 430.176062 173.440954 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/><path d="M 431.276062 171.240954 
+L 430.176062 173.440954 
+L 429.076062 171.240954 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--accent); stroke-dasharray: 1.76,1.04; stroke-dashoffset: 0; stroke: var(--accent); stroke-width: 0.8; stroke-linecap: round"/></g><g id="patch_35"><path d="M 119.774041 216.856206 
+Q 223.241381 241.688368 326.056424 217.012758 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/><path d="M 323.660462 216.456552 
+L 326.056424 217.012758 
+L 324.173883 218.595804 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--ink2); stroke-width: 0.6; stroke-linecap: round"/></g><g id="patch_36"><path d="M 182.563126 43.654713 
+L 187.382153 43.654713 
+L 187.382153 27.213328 
+L 182.563126 27.213328 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m2)"/></g><g id="patch_37"><path d="M 182.563126 73.419291 
+L 187.382153 73.419291 
+L 187.382153 56.977905 
+L 182.563126 56.977905 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m1)"/></g><g id="patch_38"><path d="M 182.563126 106.585534 
+L 187.382153 106.585534 
+L 187.382153 87.309427 
+L 182.563126 87.309427 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m3)"/></g><g id="patch_39"><path d="M 204.10701 69.734153 
+C 205.309853 69.734153 206.463593 69.256258 207.314132 68.405719 
+C 208.16467 67.555181 208.642565 66.401441 208.642565 65.198598 
+C 208.642565 63.995755 208.16467 62.842015 207.314132 61.991476 
+C 206.463593 61.140938 205.309853 60.663043 204.10701 60.663043 
+C 202.904167 60.663043 201.750427 61.140938 200.899889 61.991476 
+C 200.04935 62.842015 199.571456 63.995755 199.571456 65.198598 
+C 199.571456 66.401441 200.04935 67.555181 200.899889 68.405719 
+C 201.750427 69.256258 202.904167 69.734153 204.10701 69.734153 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.6; stroke-linejoin: miter"/></g><g id="patch_40"><path d="M 223.950062 73.702763 
+L 263.888435 73.702763 
+L 263.888435 56.694433 
+L 223.950062 56.694433 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m1); stroke: var(--paper); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_41"><path d="M 263.888435 73.702763 
+L 317.1396 73.702763 
+L 317.1396 56.694433 
+L 263.888435 56.694433 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m2); stroke: var(--paper); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_42"><path d="M 317.1396 73.702763 
+L 357.077973 73.702763 
+L 357.077973 56.694433 
+L 317.1396 56.694433 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m3); stroke: var(--paper); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_43"><path d="M 357.077973 73.702763 
+L 358.63707 73.702763 
+L 358.63707 56.694433 
+L 357.077973 56.694433 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--ink2); stroke: var(--paper); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_44"><path d="M 392.332528 88.159843 
+L 405.372247 88.159843 
+Q 407.07308 88.159843 407.07308 86.45901 
+L 407.07308 82.206928 
+Q 407.07308 80.506095 405.372247 80.506095 
+L 392.332528 80.506095 
+Q 390.631695 80.506095 390.631695 82.206928 
+L 390.631695 86.45901 
+Q 390.631695 88.159843 392.332528 88.159843 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--m1); stroke: var(--ink2); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_45"><path d="M 411.041691 88.159843 
+L 424.08141 88.159843 
+Q 425.782243 88.159843 425.782243 86.45901 
+L 425.782243 82.206928 
+Q 425.782243 80.506095 424.08141 80.506095 
+L 411.041691 80.506095 
+Q 409.340858 80.506095 409.340858 82.206928 
+L 409.340858 86.45901 
+Q 409.340858 88.159843 411.041691 88.159843 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="patch_46"><path d="M 429.750854 88.159843 
+L 442.790573 88.159843 
+Q 444.491406 88.159843 444.491406 86.45901 
+L 444.491406 82.206928 
+Q 444.491406 80.506095 442.790573 80.506095 
+L 429.750854 80.506095 
+Q 428.050021 80.506095 428.050021 82.206928 
+L 428.050021 86.45901 
+Q 428.050021 88.159843 429.750854 88.159843 
+z
+" clip-path="url(#pc565d3a3d7)" style="fill: var(--paper); stroke: var(--ink2); stroke-width: 0.5; stroke-linejoin: miter"/></g><g id="line2d_9"><path d="M 201.555761 65.198598 
+L 206.65826 65.198598 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6"/></g><g id="line2d_10"><path d="M 204.10701 67.749847 
+L 204.10701 62.647348 
+" clip-path="url(#pc565d3a3d7)" style="fill: none; stroke: var(--ink2); stroke-width: 0.6"/></g><g id="text_1"><text style="font-weight: 700; font-size: 8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="2.841773" y="10.007533" transform="rotate(-0 2.841773 10.007533)">a</text></g><g id="text_2"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="14.18066" y="9.748676" transform="rotate(-0 14.18066 9.748676)">Offline item understanding</text></g><g id="text_3"><text style="font-size: 6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="112.727536" y="9.489896" transform="rotate(-0 112.727536 9.489896)">once per item for all 25,612 items; outputs are frozen and shared by every online stage</text></g><g id="text_4"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="9.361633" y="78.162856" transform="rotate(-0 9.361633 78.162856)">Skyrim VR</text></g><g id="text_5"><text style="font-size: 6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="9.361633" y="85.403742" transform="rotate(-0 9.361633 85.403742)">PlayStation 4</text></g><g id="text_6"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="9.361633" y="94.938339" transform="rotate(-0 9.361633 94.938339)">title, description,</text></g><g id="text_7"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="9.361633" y="101.458199" transform="rotate(-0 9.361633 101.458199)">feature bullets</text></g><g id="text_8"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="101.490087" y="33.005803" transform="rotate(-0 101.490087 33.005803)">CLIP ViT-B/32</text></g><g id="text_9"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="101.490087" y="41.843948" transform="rotate(-0 101.490087 41.843948)">product image</text></g><g id="text_10"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="101.490087" y="62.77038" transform="rotate(-0 101.490087 62.77038)">MiniLM-L6</text></g><g id="text_11"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="101.490087" y="71.608525" transform="rotate(-0 101.490087 71.608525)">listing text</text></g><g id="text_12"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="101.490087" y="94.519263" transform="rotate(-0 101.490087 94.519263)">Qwen2.5-VL-7B</text></g><g id="text_13"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="101.490087" y="103.358993" transform="rotate(-0 101.490087 103.358993)">image + title → JSON → MiniLM</text></g><g id="text_14"><text style="font-size: 5.2px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: start; fill: var(--ink2)" x="100.923142" y="122.265675" transform="rotate(-0 100.923142 122.265675)">{"sub_genre": "Action Role-Playing", "target_audience": "Adults",</text></g><g id="text_15"><text style="font-size: 5.2px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: start; fill: var(--ink2)" x="100.923142" y="129.919424" transform="rotate(-0 100.923142 129.919424)"> "visual_style": ["Dark", "Fantasy", "Epic"], …}</text></g><g id="text_16"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="243.919249" y="51.959022" transform="rotate(-0 243.919249 51.959022)">text</text></g><g id="text_17"><text style="font-weight: 700; font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="243.919249" y="66.699575" transform="rotate(-0 243.919249 66.699575)">384</text></g><g id="text_18"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="290.514018" y="51.958965" transform="rotate(-0 290.514018 51.958965)">image</text></g><g id="text_19"><text style="font-weight: 700; font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="290.514018" y="66.699575" transform="rotate(-0 290.514018 66.699575)">512</text></g><g id="text_20"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="337.108786" y="51.959022" transform="rotate(-0 337.108786 51.959022)">profile</text></g><g id="text_21"><text style="font-weight: 700; font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="337.108786" y="66.699575" transform="rotate(-0 337.108786 66.699575)">384</text></g><g id="text_22"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="223.950062" y="82.007071" transform="rotate(-0 223.950062 82.007071)">1,281-d fused content vector, frozen</text></g><g id="text_23"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="223.950062" y="88.758591" transform="rotate(-0 223.950062 88.758591)">(last dimension: image-present flag)</text></g><g id="text_24"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="390.631695" y="31.163234" transform="rotate(-0 390.631695 31.163234)">Item tower → FAISS index</text></g><g id="text_25"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="390.631695" y="39.434489" transform="rotate(-0 390.631695 39.434489)">MLP 1,281 → 256 → 128, L2-normalized</text></g><g id="text_26"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="390.631695" y="46.237766" transform="rotate(-0 390.631695 46.237766)">flat (exact), HNSW or IVF</text></g><g id="text_27"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="390.631695" y="70.849337" transform="rotate(-0 390.631695 70.849337)">RQ-VAE → semantic ID</text></g><g id="text_28"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="390.631695" y="79.120592" transform="rotate(-0 390.631695 79.120592)">3 residual levels × 256 codes</text></g><g id="text_29"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="398.852388" y="85.782188" transform="rotate(-0 398.852388 85.782188)">97</text></g><g id="text_30"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="417.561551" y="85.782188" transform="rotate(-0 417.561551 85.782188)">21</text></g><g id="text_31"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="436.270713" y="85.782188" transform="rotate(-0 436.270713 85.782188)">28</text></g><g id="text_32"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="446.759184" y="85.730377" transform="rotate(-0 446.759184 85.730377)">Skyrim VR, levels 1 to 3</text></g><g id="text_33"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="385.529196" y="99.478777" transform="rotate(-0 385.529196 99.478777)">First code 97 is shared by 125 items, e.g. Diablo III,</text></g><g id="text_34"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="385.529196" y="105.715165" transform="rotate(-0 385.529196 105.715165)">Dark Souls III, Final Fantasy XII</text></g><g id="text_35"><text style="font-weight: 700; font-size: 8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="2.841773" y="153.444449" transform="rotate(-0 2.841773 153.444449)">b</text></g><g id="text_36"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="14.18066" y="153.18566" transform="rotate(-0 14.18066 153.18566)">Online cascade, per request</text></g><g id="text_37"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="84.481757" y="183.800653" transform="rotate(-0 84.481757 183.800653)">Retrieve</text></g><g id="text_38"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="84.481757" y="193.952698" transform="rotate(-0 84.481757 193.952698)">two-tower over FAISS</text></g><g id="text_39"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="84.481757" y="201.322974" transform="rotate(-0 84.481757 201.322974)">+ item co-visitation</text></g><g id="text_40"><text style="font-size: 5.6px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: end; fill: var(--muted)" x="155.63327" y="212.924923" transform="rotate(-0 155.63327 212.924923)">1.1 ms</text></g><g id="text_41"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="187.949097" y="183.800653" transform="rotate(-0 187.949097 183.800653)">Pre-rank</text></g><g id="text_42"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="187.949097" y="193.952698" transform="rotate(-0 187.949097 193.952698)">distilled student</text></g><g id="text_43"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="187.949097" y="201.322918" transform="rotate(-0 187.949097 201.322918)">(ranker minus DIN, cross)</text></g><g id="text_44"><text style="font-size: 5.6px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: end; fill: var(--muted)" x="259.10061" y="212.924923" transform="rotate(-0 259.10061 212.924923)">5.9 ms</text></g><g id="text_45"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="291.416437" y="183.800653" transform="rotate(-0 291.416437 183.800653)">Rank</text></g><g id="text_46"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="291.416437" y="193.952698" transform="rotate(-0 291.416437 193.952698)">DIN · DCN-v2 · MMoE</text></g><g id="text_47"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="291.416437" y="201.322918" transform="rotate(-0 291.416437 201.322918)">P(click), P(satisfaction)</text></g><g id="text_48"><text style="font-size: 5.6px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: end; fill: var(--muted)" x="362.567951" y="212.924923" transform="rotate(-0 362.567951 212.924923)">3.8 ms</text></g><g id="text_49"><text style="font-weight: 700; font-size: 7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="394.883777" y="183.800653" transform="rotate(-0 394.883777 183.800653)">Post-process</text></g><g id="text_50"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="394.883777" y="193.952698" transform="rotate(-0 394.883777 193.952698)">fusion with retrieval score</text></g><g id="text_51"><text style="font-size: 5.7px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink2)" x="394.883777" y="201.322918" transform="rotate(-0 394.883777 201.322918)">MMR / DPP, category cap</text></g><g id="text_52"><text style="font-size: 5.6px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-anchor: end; fill: var(--muted)" x="466.035291" y="212.924923" transform="rotate(-0 466.035291 212.924923)">0.8 ms</text></g><g id="text_53"><text style="font-weight: 700; font-size: 6.5px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="4.259134" y="188.773758" transform="rotate(-0 4.259134 188.773758)">Request</text></g><g id="text_54"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="4.259134" y="197.32843" transform="rotate(-0 4.259134 197.32843)">user history, or an</text></g><g id="text_55"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="4.259134" y="203.848345" transform="rotate(-0 4.259134 203.848345)">ad-hoc session basket</text></g><g id="text_56"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="171.507711" y="192.277744" transform="rotate(-0 171.507711 192.277744)">200</text></g><g id="text_57"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="274.975052" y="192.277744" transform="rotate(-0 274.975052 192.277744)">50</text></g><g id="text_58"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="378.442392" y="192.277744" transform="rotate(-0 378.442392 192.277744)">50</text></g><g id="text_59"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="497.784173" y="193.411632" transform="rotate(-0 497.784173 193.411632)">top 20</text></g><g id="text_60"><text style="font-size: 5.8px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="497.784173" y="200.781909" transform="rotate(-0 497.784173 200.781909)">slate</text></g><g id="text_61"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--accent)" x="123.175707" y="168.92951" transform="rotate(-0 123.175707 168.92951)">item index</text></g><g id="text_62"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--accent)" x="226.643047" y="168.92951" transform="rotate(-0 226.643047 168.92951)">item content</text></g><g id="text_63"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--accent)" x="330.110388" y="168.92951" transform="rotate(-0 330.110388 168.92951)">content + semantic IDs</text></g><g id="text_64"><text style="font-size: 5.4px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--accent)" x="433.577728" y="168.929458" transform="rotate(-0 433.577728 168.929458)">content (diversity)</text></g><g id="text_65"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--accent)" x="123.742652" y="157.075383" transform="rotate(-0 123.742652 157.075383)">serving registry: loaded once at startup, read by every stage</text></g><g id="text_66"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink2)" x="223.241381" y="237.865004" transform="rotate(-0 223.241381 237.865004)">the retrieval score enters the ranker as a feature</text></g><g id="text_67"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="4.259134" y="253.455973" transform="rotate(-0 4.259134 253.455973)">candidates</text></g><g id="text_68"><text style="font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--muted)" x="4.259134" y="260.259251" transform="rotate(-0 4.259134 260.259251)">(log scale)</text></g><g id="text_69"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: start; fill: var(--ink)" x="72.575926" y="256.574167" transform="rotate(-0 72.575926 256.574167)">25,612</text></g><g id="text_70"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="171.507711" y="256.574167" transform="rotate(-0 171.507711 256.574167)">200</text></g><g id="text_71"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="274.975052" y="256.574167" transform="rotate(-0 274.975052 256.574167)">50</text></g><g id="text_72"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="378.442392" y="256.574167" transform="rotate(-0 378.442392 256.574167)">50</text></g><g id="text_73"><text style="font-weight: 700; font-size: 5.6px; font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif; text-anchor: middle; fill: var(--ink)" x="480.208899" y="256.574167" transform="rotate(-0 480.208899 256.574167)">20</text></g></g></g><defs><clipPath id="pc565d3a3d7"><rect x="0.007052" y="0" width="510.249897" height="274.968"/></clipPath></defs></svg></div>
+<figcaption><span class="lbl">Figure 1.</span> System overview. <b>a</b>, Offline, three frozen encoders read each item once, shown here for a real catalog item with an excerpt of the JSON profile Qwen2.5-VL wrote for it. Their outputs concatenate into the 1,281-d content vector, drawn to scale by block. The item tower turns that vector into the FAISS index, and the RQ-VAE turns it into a three-level semantic ID; the example item's first code is shared by 125 items, whose most popular members are fantasy role-playing games. <b>b</b>, Online, a request passes through four stages and returns 20 items by default. The ribbon shows candidates per request on a log scale, and stage latencies are CPU means from <a href="#t8">Table 8</a>. Every stage reads the same registry of offline artifacts (dashed), and the retrieval score travels with each candidate into the ranker.</figcaption>
+</figure>
+
+<h3 id="s3-1"><span class="n">3.1</span>Retrieval</h3>
+
+<p>The retriever is a two-tower model. The item tower maps the content vector through a two-layer MLP (1,281 → 256 → 128) and normalizes the output. The user tower applies an MLP of the same shape to the mean content vector of the user's training history. Neither tower reads a user ID, so one model scores a logged user and a brand-new session alike. Training uses an in-batch sampled softmax with temperature <i>τ</i> and the log-frequency correction of Yi et al. <a href="#r6">[6]</a>, which removes the penalty that popular items otherwise receive for appearing more often as in-batch negatives:</p>
+
+<div class="eqn">
+<math display="block"><mi>ℒ</mi><mo>=</mo><mo>−</mo><mi>log</mi><mfrac><mrow><mi>exp</mi><mo stretchy="false">(</mo><mi>s</mi><mo stretchy="false">(</mo><mi>u</mi><mo>,</mo><msup><mi>i</mi><mo>+</mo></msup><mo stretchy="false">)</mo><mo>/</mo><mi mathvariant="normal" style="font-style:italic">τ</mi><mo>−</mo><mi>log</mi><mspace width="0.17em"/><msub><mi>q</mi><msup><mi>i</mi><mo>+</mo></msup></msub><mo stretchy="false">)</mo></mrow><mrow><munder><mo>∑</mo><mrow><mi>j</mi><mo>∈</mo><mi>B</mi></mrow></munder><mi>exp</mi><mo stretchy="false">(</mo><mi>s</mi><mo stretchy="false">(</mo><mi>u</mi><mo>,</mo><mi>j</mi><mo stretchy="false">)</mo><mo>/</mo><mi mathvariant="normal" style="font-style:italic">τ</mi><mo>−</mo><mi>log</mi><mspace width="0.17em"/><msub><mi>q</mi><mi>j</mi></msub><mo stretchy="false">)</mo></mrow></mfrac></math>
+<span class="no">(1)</span>
+</div>
+
+<p class="cont">where <i>s</i> is cosine similarity, <i>B</i> is the batch and <i>q<sub>j</sub></i> is the sampling frequency of item <i>j</i>. For ablation the tower has two further modes: <em>hybrid</em> adds learned item-ID, price-bucket and category embeddings to the content input, and <em>ID-only</em> replaces content with learned user and item vectors. FAISS <a href="#r7">[7]</a> serves the item embeddings from a flat, HNSW <a href="#r8">[8]</a> or IVF index. A second candidate source counts item-to-item co-visitation in training histories, damped by popularity. Retrieval passes 200 candidates downstream.</p>
+
+<h3 id="s3-2"><span class="n">3.2</span>Ranking</h3>
+
+<p>The ranker is where the modeling budget goes. A DIN <a href="#r9">[9]</a> target-attention block weights the user's behaviour sequence by its relevance to the candidate, with the candidate masked out of its own history so a positive cannot leak through it. A DCN-v2 <a href="#r10">[10]</a> cross network models explicit feature interactions. An MMoE <a href="#r11">[11]</a> layer shares experts between two task heads, P(click) and P(satisfaction), where satisfaction means a rating of four or more. Structured features (price, category leaf, item ID) enter as quantile buckets with learned embeddings. Two inputs are switched by configuration: the candidate's retrieval score <i>u</i>·<i>i</i>, the dot product of the user and item vectors (<a href="#s4-3">Section 4.3</a>) and semantic-ID code embeddings (<a href="#s3-4">Section 3.4</a>). A small metadata file saved with each checkpoint records which inputs it uses, and the serving path builds the model from that file.</p>
+
+<h3 id="s3-3"><span class="n">3.3</span>Pre-ranking and post-processing</h3>
+
+<p>Running the full ranker over 200 candidates spends most of its work on items that never reach the user. A pre-ranker with the ranker's architecture minus the DIN and cross blocks is distilled from the ranker's click logits and cuts 200 candidates to 50; its top 50 retains 79% of the full ranker's top 10. Post-processing multiplies the two task scores, P(click)·P(sat), blends in the retrieval score with a weight <i>α</i> tuned on validation, then trades relevance for diversity with maximal marginal relevance <a href="#r12">[12]</a> or greedy MAP inference for a determinantal point process <a href="#r13">[13]</a> over item content embeddings, and finally applies a per-category cap.</p>
+
+<h3 id="s3-4"><span class="n">3.4</span>Semantic IDs</h3>
+
+<p>An RQ-VAE <a href="#r14">[14]</a> quantizes each content vector into three levels of 256 codes, so items with similar content share code prefixes and a new item receives a meaningful identifier from its content alone. Residual quantizers are prone to codebook collapse, so training initializes codebooks by k-means on first-batch residuals, updates them by exponential moving average, re-seeds dead codes, and fails any run whose per-level utilization drops below 60%. The codes serve three purposes: they replace the learned item ID in the two-tower, they enter the ranker as features, and they form the vocabulary of a TIGER-style generative retriever. That retriever is a small decoder-only transformer that reads the user's history as code tokens and generates the next item's codes by beam search constrained to a trie of real items, so every output is a valid item and no ANN index is involved.</p>
+
+<h3 id="s3-5"><span class="n">3.5</span>Serving and operations</h3>
+
+<p>At startup a registry loads every artifact into memory on CPU: both towers, the FAISS index, the pre-ranker, the ranker and the item feature tables. Each request then runs the four stages in sequence and records the latency of each. A FastAPI application exposes the cascade at <code>GET /recommend</code> for logged users and at <code>POST /recommend/session</code> for an ad-hoc basket of items; because no stage reads a user ID, a new session receives a personalized feed with no retraining. An explain mode returns the candidates and scores after every stage. The ranker exports to ONNX with its feature tables baked in and matches PyTorch to a maximum absolute difference of 2.4×10<sup>−6</sup>.</p>
+
+<p>Around the service sit a Docker Compose deployment with a Streamlit demo, Prometheus metrics with per-stage latency histograms, MLflow run tracking, and continuous integration that runs ruff and a pure-logic test suite on every push. Every stage is one CLI command driven by a single YAML file, and command-line overrides are logged with each run. <a href="#tA1">Table A1</a> lists the key parameters of every stage.</p>
+
+<!-- ============================================================ 4 -->
+<h2 id="s4"><span class="n">4</span>Results: the cascade</h2>
+
+<p>All results in this section are on the test split under temporal leave-last-out, with model variants chosen on the validation split. Unless stated otherwise the catalog is Video_Games and the item content is the fused 1,281-d vector. R@<i>K</i> denotes Recall@<i>K</i>, the fraction of test users whose held-out next item appears in the top <i>K</i>.</p>
+
+<h3 id="s4-1"><span class="n">4.1</span>Retrieval</h3>
+
+<figure id="t2">
+<div class="cap"><span class="lbl">Table 2.</span> Candidate sources on Video_Games. Recall@<i>K</i> of the held-out next item; the cold column restricts to targets in the bottom popularity quartile.</div>
+<div class="tbl"><table>
+<thead><tr><th>Source</th><th>R@10</th><th>R@100</th><th>R@500</th><th>R@100, cold</th></tr></thead>
+<tbody>
+<tr><td>Two-tower, content</td><td>0.063</td><td>0.214</td><td>0.408</td><td>0.044</td></tr>
+<tr><td>Two-tower, hybrid</td><td>0.063</td><td>0.216</td><td>0.415</td><td>0.041</td></tr>
+<tr><td>Two-tower, ID-only</td><td>0.036</td><td>0.129</td><td>0.263</td><td>0.024</td></tr>
+<tr class="mid"><td>Item-to-item co-visitation</td><td>0.038</td><td>0.116</td><td>0.170</td><td>0.065</td></tr>
+<tr><td>Popularity</td><td>0.025</td><td>0.097</td><td>0.233</td><td>0.000</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>Content beats identity. The content tower reaches Recall@100 of 0.214 against 0.129 for the ID-only tower, a 66% gain that grows to 81% on the cold slice, and it does so without per-user or per-item embedding tables. The ID-only tower fits its training data more tightly and generalizes worse, the expected behaviour of free per-item vectors on sparse data. Adding ID, price and category embeddings to the content tower (hybrid) leaves overall recall where it was and lowers cold-slice recall from 0.044 to 0.041, so structured-feature work belongs in the ranker.</p>
+
+<p>The sources complement each other. Co-visitation is the weakest source overall and the strongest on the cold slice (0.065), while popularity retrieves nothing there; together these numbers make the case for blending a learned retriever with a co-visitation channel. An HNSW index recovers 81% of the exact top 100 at its default search depth.</p>
+
+<h3 id="s4-2"><span class="n">4.2</span>Ranking</h3>
+
+<figure id="t3">
+<div class="cap"><span class="lbl">Table 3.</span> Ranker ablation on Video_Games. GAUC is the per-user AUC of click prediction, averaged over users, with ties scored at mid-rank.</div>
+<div class="tbl"><table>
+<thead><tr><th>Variant</th><th>GAUC</th><th>GAUC, cold</th></tr></thead>
+<tbody>
+<tr><td>Full (DIN + DCN-v2 + MMoE, content features)</td><td>0.858</td><td>0.701</td></tr>
+<tr class="mid"><td>without content features</td><td>0.761</td><td>0.347</td></tr>
+<tr><td>without DIN</td><td>0.852</td><td>0.692</td></tr>
+<tr><td>without DCN-v2 cross network</td><td>0.852</td><td>0.701</td></tr>
+<tr><td>single task (no MMoE)</td><td>0.856</td><td>0.703</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>Content is the dominant ranking input as well. Removing it lowers GAUC from 0.858 to 0.761 and drops cold-slice GAUC to 0.347, below the 0.5 of a random ranker: without content, a rarely seen item gives the model nothing to separate it from noise. DIN and the DCN-v2 cross network each add 0.006 GAUC. The MMoE head leaves click GAUC unchanged (0.856 single-task against 0.858) and adds the satisfaction objective without cost to click quality.</p>
+
+<h3 id="s4-3"><span class="n">4.3</span>Cascade consistency</h3>
+
+<p>Re-ranking retrieved candidates exposes a consistency problem that offline ranking metrics do not show. <a href="#t4">Table 4</a> isolates its mechanisms by measuring the NDCG@10 of each ranker's order over the retriever's top 200. A ranker trained on random negatives scores 0.858 GAUC yet orders these candidates at 0.081, because random negatives are far easier than the candidates retrieval surfaces; this is sample-selection bias between stages. Mining negatives from the candidate set exposes a second mechanism, label poisoning. The candidate file masked only training items, and because retrieval works, a user's held-out positive is usually among the candidates, so it was drawn as a negative and labelled click&nbsp;=&nbsp;0 (0.051). Rejection-resampling every negative that collides with the row positive or with the user's validation and test items repairs the pool (0.060).</p>
+
+<figure id="t4">
+<div class="cap"><span class="lbl">Table 4.</span> Cascade consistency on Video_Games: NDCG@10 of each ranker's order over the retriever's top 200, with the text+image features (897-d) of the original run. GAUC is measured against random negatives, a task the listwise variants no longer optimize.</div>
+<div class="tbl"><table>
+<thead><tr><th>Ranker</th><th>Cascade NDCG@10</th><th>GAUC</th></tr></thead>
+<tbody>
+<tr><td class="sub">Retrieval order (reference)</td><td>0.109</td><td>–</td></tr>
+<tr class="mid"><td>Random negatives</td><td>0.081</td><td>0.858</td></tr>
+<tr><td>Hard negatives, poisoned pool</td><td>0.051</td><td>–</td></tr>
+<tr><td>Hard negatives, clean pool</td><td>0.060</td><td>0.791</td></tr>
+<tr><td>&nbsp;&nbsp;+ retrieval-score feature</td><td>0.075</td><td>0.825</td></tr>
+<tr><td>&nbsp;&nbsp;+ listwise softmax loss</td><td>0.064</td><td>0.647</td></tr>
+<tr><td>&nbsp;&nbsp;+ serving-like slate (75% hard, from the top 50)</td><td>0.032</td><td>0.636</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>The third mechanism is a missing cross-stage signal. Without the retrieval score the ranker can only replace the retriever's opinion, never refine it. Adding the raw two-tower score <i>u</i>·<i>i</i> as an input, a quantity defined for every user-item pair and identical to the FAISS score at serving time, lifts cascade NDCG@10 to 0.075, 48% above the poisoned pool. How the feature is built matters. A binary was-retrieved flag looks equivalent but would encode the label in reverse: training positives are masked out of the candidate file, so every positive would carry flag&nbsp;0 and most hard negatives flag&nbsp;1. The same residual bias appears when hard negatives are concentrated in the top 50, the slate most correlated with candidate membership, which drops cascade NDCG@10 to 0.032. Mixing easy and hard negatives, as reported for embedding-based retrieval at Facebook <a href="#r15">[15]</a>, is the stable regime.</p>
+
+<p>Two properties of the evaluation govern how these numbers are used. The candidates were selected by the retriever's own similarity, which gives the retriever's order a home-field advantage on this metric, and validation-tuned fusion settles at <i>α</i> between 0.75 and 1.0. The served path therefore ranks by the fused score, which on validation is never worse than retrieval order because <i>α</i>&nbsp;=&nbsp;1 is in the grid, and the comparison free of the advantage is an online one. The winning variant also depends on the feature set: the text+image run selects the score-feature ranker, the fused-feature run selects the clean hard-negative ranker (0.063, +23% over its poisoned baseline), and Beauty selects the listwise score-feature ranker. Selection is therefore automated on validation, and the chosen checkpoint is saved with a metadata file that describes its inputs, so serving follows every change without code edits.</p>
+
+<h3 id="s4-4"><span class="n">4.4</span>VLM item profiles</h3>
+
+<figure id="t5">
+<div class="cap"><span class="lbl">Table 5.</span> Content-source ablation on Video_Games under identical retrieval and ranking recipes. Dimensions include the image-present flag where the image block is used.</div>
+<div class="tbl"><table>
+<thead><tr><th>Sources</th><th>Dim</th><th>R@100</th><th>R@100, cold</th><th>GAUC</th><th>GAUC, cold</th></tr></thead>
+<tbody>
+<tr><td>text + image</td><td>897</td><td>0.2104</td><td>0.0440</td><td>0.8586</td><td>0.7033</td></tr>
+<tr><td>image</td><td>513</td><td>0.1924</td><td>0.0302</td><td>0.8495</td><td>0.6820</td></tr>
+<tr><td>VLM profile</td><td>385</td><td>0.1877</td><td>0.0287</td><td>0.8444</td><td>0.6640</td></tr>
+<tr><td>image + VLM profile</td><td>897</td><td>0.2126</td><td>0.0393</td><td>0.8586</td><td>0.7046</td></tr>
+<tr class="mid"><td>text + image + VLM profile</td><td>1281</td><td>0.2135</td><td>0.0436</td><td>0.8577</td><td>0.6994</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>The full combination gives the best retrieval (Recall@100 0.2135, +1.5% over text and image) and is the production feature set. Two comparisons show what the profile carries. On its own, the 385-d profile block nearly matches the 513-d image block (0.188 against 0.192), so one short text embedding of the profile captures most of what the image embedding provides. Paired with the image at equal width, the profile matches the raw listing text (0.2126 against 0.2104), so it can stand in for the listing. Video_Games listings are text-rich, and much of what the profile says is already in the raw text; on the sparser Beauty catalog the lift doubles to +3.1% (0.0859 against 0.0833). Profiles leave the cold slice unchanged on both catalogs, and the next subsection shows that the identifier pathway is what moves it.</p>
+
+<h3 id="s4-5"><span class="n">4.5</span>Semantic IDs and generative retrieval</h3>
+
+<p>The RQ-VAE trains in about 16 seconds on the fused vectors and uses its codebooks fully: 100% utilization on all three levels and perplexities of 208, 249 and 252 out of 256. Of the 25,612 items, 9.6% share a full code tuple with another item, and the generative retriever resolves these collisions by within-group popularity.</p>
+
+<figure id="t6">
+<div class="cap"><span class="lbl">Table 6.</span> Semantic IDs on Video_Games. Top: item representation inside the two-tower retriever. Bottom: semantic-ID code embeddings as extra ranker inputs.</div>
+<div class="tbl"><table>
+<thead><tr><th>Two-tower item representation</th><th>R@100</th><th>R@100, cold</th></tr></thead>
+<tbody>
+<tr><td>learned item ID</td><td>0.1288</td><td>0.0241</td></tr>
+<tr><td>semantic ID (codes)</td><td>0.0835</td><td>0.0353</td></tr>
+<tr><td>content</td><td>0.2135</td><td>0.0436</td></tr>
+<tr><td>content + semantic ID</td><td>0.2109</td><td>0.0416</td></tr>
+<tr class="mid"><td class="b"><b>Ranker</b></td><td><b>GAUC</b></td><td><b>GAUC, cold</b></td></tr>
+<tr><td>base</td><td>0.8580</td><td>0.6993</td></tr>
+<tr><td>+ semantic-ID features</td><td>0.8610</td><td>0.7076</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>Semantic IDs act exactly where learned IDs are weakest. In place of the learned item vector they lift cold-slice Recall@100 by 46% (0.0241 → 0.0353), because a new item's codes are already trained by every item that shares them, and the gain replicates on Beauty at +47%. Warm items still prefer a free per-item vector, so overall recall favors learned IDs (0.129 against 0.084); the two representations divide the catalog by popularity. As ranker features the codes add 0.003 GAUC, and 0.008 on the cold slice, even on top of full content. Appending codes to content in the retriever leaves recall unchanged, since codes derived from content carry nothing the content lacks; their role is a compact, content-grounded identifier.</p>
+
+<p>The TIGER-style generative retriever reaches Recall@10 of 0.031 on 10,000 sampled users, half of the two-tower's 0.063, with one million parameters, a 769-token vocabulary, 48 seconds of training and no ANN index. That gap is the subject of <a href="#s5">Section 5</a>, which measures where a generative stack loses recall relative to a dense one.</p>
+
+<h3 id="s4-6"><span class="n">4.6</span>Diversity and latency</h3>
+
+<p>Post-processing exposes a smooth relevance-diversity frontier (<a href="#t7">Table 7</a>). Lowering the MMR weight <i>λ</i>, or switching to DPP, buys intra-list diversity with relevance. DPP gives the most diverse lists, 22% above pure relevance at 42% lower NDCG. Where to sit on this frontier is a product decision, and the API accepts the diversity method per request.</p>
+
+<figure id="t7">
+<div class="cap"><span class="lbl">Table 7.</span> Relevance and intra-list diversity of the final slate over the pre-ranked top 50.</div>
+<div class="tbl"><table>
+<thead><tr><th>Method</th><th>NDCG</th><th>Intra-list diversity</th></tr></thead>
+<tbody>
+<tr><td>MMR, <i>λ</i> = 1.0 (pure relevance)</td><td>0.0314</td><td>0.316</td></tr>
+<tr><td>MMR, <i>λ</i> = 0.7</td><td>0.0282</td><td>0.352</td></tr>
+<tr><td>MMR, <i>λ</i> = 0.5</td><td>0.0236</td><td>0.367</td></tr>
+<tr><td>DPP (greedy MAP)</td><td>0.0181</td><td>0.385</td></tr>
+</tbody></table></div>
+</figure>
+
+<p>On CPU the cascade answers in 11&nbsp;ms at the median and 16&nbsp;ms at p99 (<a href="#t8">Table 8</a>), well inside a 100&nbsp;ms budget. The pre-ranker is the most expensive stage because it scores all 200 candidates, while the heavy ranker sees only 50. With the fused 1,281-d features the cascade measures 12&nbsp;ms p50 and 16.4&nbsp;ms p99 over a 300-request load test, and the ONNX Runtime path returns item-identical results.</p>
+
+<figure id="t8">
+<div class="cap"><span class="lbl">Table 8.</span> Serving latency on CPU, warm, over a 200-user sample with the text+image stack and an exact (flat) FAISS index.</div>
+<div class="tbl"><table>
+<thead><tr><th>Stage</th><th>Mean latency</th></tr></thead>
+<tbody>
+<tr><td>Retrieve (FAISS, seen items masked)</td><td>1.1 ms</td></tr>
+<tr><td>Pre-rank (200 → 50)</td><td>5.9 ms</td></tr>
+<tr><td>Rank (DIN + DCN-v2 + MMoE)</td><td>3.8 ms</td></tr>
+<tr><td>Post-process (fusion, MMR or DPP)</td><td>0.8 ms</td></tr>
+<tr class="mid"><td>End to end</td><td>p50 11 · p95 14 · p99 16 ms</td></tr>
+</tbody></table></div>
+</figure>
+
+<h3 id="s4-7"><span class="n">4.7</span>Replication at scale</h3>
+
+<p>The Beauty run reuses every line of code; one configuration file points the pipeline at a category-scoped data directory. At 729,576 users and 207,649 items, the 7.4&nbsp;GB image download takes 25.7 minutes with 32 workers, CLIP encoding takes 4 minutes with DataLoader workers, and the serving registry loads in 60 seconds into 11&nbsp;GB of memory. With an HNSW index the cascade serves at 8.6&nbsp;ms p50 and 10.1&nbsp;ms p99. <a href="#t9">Table 9</a> lists the comparisons repeated on both catalogs; absolute recall is lower on Beauty because it is 7.7 times sparser, so the within-catalog contrasts carry the signal.</p>
+
+<figure id="t9">
+<div class="cap"><span class="lbl">Table 9.</span> The same comparisons on both catalogs.</div>
+<div class="tbl"><table>
+<thead><tr><th>Comparison</th><th>Video_Games</th><th>Beauty</th></tr></thead>
+<tbody>
+<tr><td>Content vs. ID-only two-tower, R@100</td><td>+66%</td><td>+75%</td></tr>
+<tr><td>Ranker without content, GAUC change</td><td>−0.097</td><td>−0.06</td></tr>
+<tr><td>Ranker without content, cold GAUC</td><td>0.70 → 0.35</td><td>0.67 → 0.40</td></tr>
+<tr><td>VLM profile lift, R@100</td><td>+1.5%</td><td>+3.1%</td></tr>
+<tr><td>Semantic vs. learned item ID, cold R@100</td><td>+46%</td><td>+47%</td></tr>
+<tr><td>Ranker + semantic-ID features, GAUC / cold GAUC</td><td>+0.003 / +0.008</td><td>+0.002 / +0.005</td></tr>
+<tr><td>RQ-VAE utilization; perplexity range</td><td>100%; 208–252</td><td>100%; 219–253</td></tr>
+<tr><td>Strongest cold-slice source</td><td>co-visitation</td><td>co-visitation</td></tr>
+<tr><td>Serving p50 / p99</td><td>12 / 16 ms (flat)</td><td>8.6 / 10.1 ms (HNSW)</td></tr>
+</tbody></table></div>
+</figure>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5"><span class="n">5</span>Where does generative retrieval lose recall?</h2>
+
+<p>A generative retriever differs from a dense retriever in several places at once. Item content is quantized into discrete codes, the encoder and the construction of training examples change, the scoring head and its objective change, and candidates come from a trie-constrained beam instead of a nearest-neighbour lookup. End-to-end comparisons vary all of these together, so the contribution of each stage is not isolated, and the decoder tends to take the blame because it is the easiest stage to point at. This section measures each stage on its own.</p>
+
+<h3 id="s5-1"><span class="n">5.1</span>Exact top-<i>K</i> ranking for a generative retriever</h3>
+
+<p>Let <i>X</i> be the item catalog. A tokenizer assigns each item <i>x</i> a code tuple (<i>c</i><sub>1</sub>, …, <i>c<sub>L</sub></i>), and given a user history <i>h</i> an autoregressive model scores the item by</p>
+
+<div class="eqn">
+<math display="block"><mi>s</mi><mo stretchy="false">(</mo><mi>x</mi><mo>∣</mo><mi>h</mi><mo stretchy="false">)</mo><mo>=</mo><munderover><mo>∑</mo><mrow><mi>ℓ</mi><mo>=</mo><mn>1</mn></mrow><mi>L</mi></munderover><mi>log</mi><mspace width="0.2em"/><mi>p</mi><mo stretchy="false">(</mo><msub><mi>c</mi><mi>ℓ</mi></msub><mo>∣</mo><msub><mi>c</mi><mrow><mo>&lt;</mo><mi>ℓ</mi></mrow></msub><mo>,</mo><mi>h</mi><mo stretchy="false">)</mo><mspace width="0.4em"/><mo>≤</mo><mspace width="0.4em"/><mn>0</mn><mo>.</mo></math>
+<span class="no">(2)</span>
+</div>
+
+<p class="cont">Every term is non-positive, so the score of a code prefix is an upper bound on the score of every item that starts with it. A best-first search over the code tree, which always expands the highest-scoring prefix, can stop as soon as the <i>K</i>-th complete item outscores the best remaining prefix. It then returns exactly the top <i>K</i> items, with no beam width and no approximation, while touching a small fraction of a finite catalog. We compute it in two variants: with the model's raw probabilities, and with each level's probabilities renormalized over the codes that lead to a real item (trie renormalization). The search agrees with brute-force enumeration on small test catalogs. It makes generative retrieval without approximate decoding an observable system, which separates what the training objective costs from what the decoder costs.</p>
+
+<h3 id="s5-2"><span class="n">5.2</span>A ladder from dense to generative retrieval</h3>
+
+<p><a href="#t10">Table 10</a> lists seven retrievers that walk from a dense retriever to a deployed generative one. Each differs from the one before it in one stage, so the difference in Recall@10 between neighbours is one entry of a loss ledger, and the entries add up to the total gap between the first and the last system. One step, from code embeddings to the sequential contrastive model, changes the encoder family and the construction of training examples together, and we report it as one joint entry.</p>
+
+<figure id="t10">
+<div class="cap"><span class="lbl">Table 10.</span> The seven systems of the ladder, in order. The first three share the two-tower architecture of Section 3.1 and differ only in the item input; the next two share one transformer encoder over code tokens and differ only in the head.</div>
+<div class="tbl"><table class="notes">
+<thead><tr><th>System</th><th>What it is</th><th>What changes from the previous system</th></tr></thead>
+<tbody>
+<tr><td>Dense retriever</td><td>two-tower over the frozen content vector</td><td>–</td></tr>
+<tr><td>Reconstructed content</td><td>the same two-tower, trained on each item's RQ-VAE reconstruction</td><td>quantization</td></tr>
+<tr><td>Code embeddings</td><td>the same two-tower, whose item input is the concatenated embeddings of the item's three codes</td><td>discrete codes replace the reconstruction</td></tr>
+<tr><td>Sequential contrastive</td><td>a transformer reads the history as code tokens; its output is matched to item vectors with an in-batch softmax</td><td>encoder family and training examples (joint)</td></tr>
+<tr><td>Exact autoregressive</td><td>the same transformer trained to generate the next item's codes; every item ranked exactly (Section 5.1)</td><td>scoring head and objective</td></tr>
+<tr><td>+ trie renormalization</td><td>as above, with probabilities renormalized over codes that lead to real items</td><td>trie renormalization</td></tr>
+<tr><td>Trie beam search</td><td>the deployed decoder: beam search of width 10 inside the trie, filled to <i>K</i> valid items</td><td>approximate decoding</td></tr>
+</tbody></table></div>
+</figure>
+
+<p><span class="runin">The matched pair.</span> The step from the sequential contrastive model to the exact autoregressive model carries the main comparison, so the two systems are matched rather than merely comparable. They share the same encoder architecture and initialization, consume byte-identical chronological next-item examples in the same seeded order, have the same number of parameters to within 0.02% (999,168 against 999,041), and receive identical validation-selected training budgets. Only the scoring head and its training objective differ, and we call this entry the head-and-objective step.</p>
+
+<p><span class="runin">Protocol.</span> Every system is evaluated under one protocol: a shared candidate set per user, a global tie rule (score, then popularity, then item index), and beams filled so that every user receives at least min(<i>K</i>, 200) valid items, with zero shortfalls across the nine main ladders (three catalogs, three seeds each). Every entry carries a hierarchical seed × user bootstrap confidence interval: seeds are resampled, user rows are resampled jointly across the drawn seeds, and both sources of uncertainty enter the interval. Equivalence uses two one-sided tests (TOST) at a margin of 10% of the local gap. Designs, margins and the stability rule of <a href="#s5-6">Section 5.6</a> were registered before the runs. Item content is the fused vector on the 2023 catalogs and text alone on Amazon-2014, and <a href="#tA1">Table A1</a> lists the training parameters.</p>
+
+<figure id="f2" class="fig">
+<div class="scroll"><svg viewBox="0 0 680 228" role="img" aria-label="Loss ledger on three catalogs"><path d="M7,117.0 L3,117.0 L3,139.0 L7,139.0" class="brk"/><text x="12.0" y="54.5" class="tk b">Dense retriever</text><text x="12.0" y="76.5" class="tk">Reconstructed content</text><text x="12.0" y="98.5" class="tk">Code embeddings</text><text x="12.0" y="120.5" class="tk">Sequential contrastive</text><text x="12.0" y="142.5" class="tk">Exact autoregressive</text><text x="12.0" y="164.5" class="tk">+ trie renormalization</text><text x="12.0" y="186.5" class="tk b">Trie beam search</text><text x="150.0" y="14.0" class="pt">Video_Games</text><text x="150.0" y="27.0" class="pm">gap 0.0224 Recall@10</text><line x1="150.0" y1="36" x2="150.0" y2="196" class="grid"/><text x="150.0" y="208.0" text-anchor="middle" class="tk">0.00</text><line x1="195.1" y1="36" x2="195.1" y2="196" class="grid"/><text x="195.1" y="208.0" text-anchor="middle" class="tk">0.02</text><line x1="240.3" y1="36" x2="240.3" y2="196" class="grid"/><text x="240.3" y="208.0" text-anchor="middle" class="tk">0.04</text><line x1="285.4" y1="36" x2="285.4" y2="196" class="grid"/><text x="285.4" y="208.0" text-anchor="middle" class="tk">0.06</text><line x1="150" y1="196" x2="308" y2="196" class="ax"/><line x1="150" y1="36" x2="150" y2="196" class="ax"/><rect x="150.0" y="45.0" width="135.7" height="12" class="endp"><title>Video_Games, Dense retriever: Recall@10 0.0601</title></rect><rect x="239.2" y="67.0" width="46.5" height="12" class="loss"><title>Video_Games, quantization: Recall@10 0.0601 → 0.0395, loss of 91.9% of the gap</title></rect><rect x="239.2" y="89.0" width="14.5" height="12" class="gain"><title>Video_Games, discrete codes: Recall@10 0.0395 → 0.0459, recovery of 28.6% of the gap</title></rect><rect x="253.7" y="111.0" width="21.2" height="12" class="gain"><title>Video_Games, sequential encoder and examples (joint): Recall@10 0.0459 → 0.0553, recovery of 41.9% of the gap</title></rect><rect x="246.1" y="133.0" width="28.8" height="12" class="loss"><title>Video_Games, head and objective (matched pair): Recall@10 0.0553 → 0.0426, loss of 56.9% of the gap</title></rect><rect x="244.8" y="155.0" width="1.3" height="12" class="loss"><title>Video_Games, trie renormalization: Recall@10 0.0426 → 0.0420, loss of 2.5% of the gap</title></rect><text x="249.1" y="164.5" class="eqv">≡</text><rect x="150.0" y="177.0" width="85.1" height="12" class="endp"><title>Video_Games, Trie beam search: Recall@10 0.0377</title></rect><rect x="235.1" y="177.0" width="9.7" height="12" class="loss"><title>Video_Games, beam search, width 10: Recall@10 0.0420 → 0.0377, loss of 19.2% of the gap</title></rect><line x1="285.7" y1="57.0" x2="285.7" y2="67.0" class="conn"/><line x1="239.2" y1="79.0" x2="239.2" y2="89.0" class="conn"/><line x1="253.7" y1="101.0" x2="253.7" y2="111.0" class="conn"/><line x1="274.9" y1="123.0" x2="274.9" y2="133.0" class="conn"/><line x1="246.1" y1="145.0" x2="246.1" y2="155.0" class="conn"/><line x1="244.8" y1="167.0" x2="244.8" y2="177.0" class="conn"/><text x="322.0" y="14.0" class="pt">Beauty</text><text x="322.0" y="27.0" class="pm">gap 0.0134 Recall@10</text><line x1="322.0" y1="36" x2="322.0" y2="196" class="grid"/><text x="322.0" y="208.0" text-anchor="middle" class="tk">0.00</text><line x1="382.8" y1="36" x2="382.8" y2="196" class="grid"/><text x="382.8" y="208.0" text-anchor="middle" class="tk">0.01</text><line x1="443.5" y1="36" x2="443.5" y2="196" class="grid"/><text x="443.5" y="208.0" text-anchor="middle" class="tk">0.02</text><line x1="322" y1="196" x2="480" y2="196" class="ax"/><line x1="322" y1="36" x2="322" y2="196" class="ax"/><rect x="322.0" y="45.0" width="138.4" height="12" class="endp"><title>Beauty, Dense retriever: Recall@10 0.0228</title></rect><rect x="413.3" y="67.0" width="47.2" height="12" class="loss"><title>Beauty, quantization: Recall@10 0.0228 → 0.0150, loss of 58.2% of the gap</title></rect><rect x="413.3" y="89.0" width="1.9" height="12" class="gain"><title>Beauty, discrete codes: Recall@10 0.0150 → 0.0153, recovery of 2.4% of the gap</title></rect><text x="418.2" y="98.5" class="eqv">≡</text><rect x="407.7" y="111.0" width="7.5" height="12" class="loss"><title>Beauty, sequential encoder and examples (joint): Recall@10 0.0153 → 0.0141, loss of 9.2% of the gap</title></rect><rect x="388.2" y="133.0" width="19.4" height="12" class="loss"><title>Beauty, head and objective (matched pair): Recall@10 0.0141 → 0.0109, loss of 24.0% of the gap</title></rect><rect x="386.5" y="155.0" width="1.7" height="12" class="loss"><title>Beauty, trie renormalization: Recall@10 0.0109 → 0.0106, loss of 2.1% of the gap</title></rect><text x="391.2" y="164.5" class="eqv">≡</text><rect x="322.0" y="177.0" width="57.3" height="12" class="endp"><title>Beauty, Trie beam search: Recall@10 0.0094</title></rect><rect x="379.3" y="177.0" width="7.2" height="12" class="loss"><title>Beauty, beam search, width 10: Recall@10 0.0106 → 0.0094, loss of 8.9% of the gap</title></rect><line x1="460.4" y1="57.0" x2="460.4" y2="67.0" class="conn"/><line x1="413.3" y1="79.0" x2="413.3" y2="89.0" class="conn"/><line x1="415.2" y1="101.0" x2="415.2" y2="111.0" class="conn"/><line x1="407.7" y1="123.0" x2="407.7" y2="133.0" class="conn"/><line x1="388.2" y1="145.0" x2="388.2" y2="155.0" class="conn"/><line x1="386.5" y1="167.0" x2="386.5" y2="177.0" class="conn"/><text x="494.0" y="14.0" class="pt">Amazon-2014</text><text x="494.0" y="27.0" class="pm">gap 0.0180 Recall@10</text><line x1="494.0" y1="36" x2="494.0" y2="196" class="grid"/><text x="494.0" y="208.0" text-anchor="middle" class="tk">0.00</text><line x1="546.7" y1="36" x2="546.7" y2="196" class="grid"/><text x="546.7" y="208.0" text-anchor="middle" class="tk">0.02</text><line x1="599.3" y1="36" x2="599.3" y2="196" class="grid"/><text x="599.3" y="208.0" text-anchor="middle" class="tk">0.04</text><line x1="652.0" y1="36" x2="652.0" y2="196" class="grid"/><text x="652.0" y="208.0" text-anchor="middle" class="tk">0.06</text><line x1="494" y1="196" x2="652" y2="196" class="ax"/><line x1="494" y1="36" x2="494" y2="196" class="ax"/><rect x="494.0" y="45.0" width="133.4" height="12" class="endp"><title>Amazon-2014, Dense retriever: Recall@10 0.0507</title></rect><rect x="589.2" y="67.0" width="38.2" height="12" class="loss"><title>Amazon-2014, quantization: Recall@10 0.0507 → 0.0362, loss of 80.5% of the gap</title></rect><rect x="589.2" y="89.0" width="1.2" height="12" class="gain"><title>Amazon-2014, discrete codes: Recall@10 0.0362 → 0.0366, recovery of 2.5% of the gap</title></rect><rect x="590.4" y="111.0" width="17.6" height="12" class="gain"><title>Amazon-2014, sequential encoder and examples (joint): Recall@10 0.0366 → 0.0433, recovery of 37.0% of the gap</title></rect><rect x="583.1" y="133.0" width="24.9" height="12" class="loss"><title>Amazon-2014, head and objective (matched pair): Recall@10 0.0433 → 0.0338, loss of 52.3% of the gap</title></rect><rect x="582.4" y="155.0" width="1.0" height="12" class="loss"><title>Amazon-2014, trie renormalization: Recall@10 0.0338 → 0.0336, loss of 1.4% of the gap</title></rect><text x="586.1" y="164.5" class="eqv">≡</text><rect x="494.0" y="177.0" width="85.9" height="12" class="endp"><title>Amazon-2014, Trie beam search: Recall@10 0.0326</title></rect><rect x="579.9" y="177.0" width="2.5" height="12" class="loss"><title>Amazon-2014, beam search, width 10: Recall@10 0.0336 → 0.0326, loss of 5.3% of the gap</title></rect><text x="585.4" y="186.5" class="eqv">≡</text><line x1="627.4" y1="57.0" x2="627.4" y2="67.0" class="conn"/><line x1="589.2" y1="79.0" x2="589.2" y2="89.0" class="conn"/><line x1="590.4" y1="101.0" x2="590.4" y2="111.0" class="conn"/><line x1="607.9" y1="123.0" x2="607.9" y2="133.0" class="conn"/><line x1="583.1" y1="145.0" x2="583.1" y2="155.0" class="conn"/><line x1="582.4" y1="167.0" x2="582.4" y2="177.0" class="conn"/><text x="401.0" y="224.0" text-anchor="middle" class="tk">Recall@10</text></svg></div>
+<svg viewBox="0 0 520 18" class="legend" aria-hidden="true"><rect x="2" y="4" width="14" height="10" class="endp"/><text x="21.0" y="13.0" class="tk">first and last system</text><rect x="134" y="4" width="14" height="10" class="loss"/><text x="153.0" y="13.0" class="tk">loss</text><rect x="190" y="4" width="14" height="10" class="gain"/><text x="209.0" y="13.0" class="tk">recovery</text><text x="270.0" y="14.0" class="eqv">≡</text><text x="282.0" y="13.0" class="tk">passes the pre-registered equivalence test</text></svg>
+<figcaption><span class="lbl">Figure 2.</span> The loss ledger in absolute Recall@10, averaged over three seeds. Each row is one system of <a href="#t10">Table 10</a>. Between the first and the last row, each bar is the change into that system: solid for a loss, hatched for a recovery. The bracket marks the matched pair. Hover a bar for its value and its share of the gap.</figcaption>
+</figure>
+
+<figure id="t11">
+<div class="cap"><span class="lbl">Table 11.</span> The loss ledger at Recall@10. Each row is one step of the ladder, as a share of the total gap, with hierarchical seed × user bootstrap 95% intervals over three seeds. Positive entries are losses and negative entries are recoveries; ≡ marks entries that pass the pre-registered equivalence test. The last row is the span of the share attributed to the autoregressive model across the three comparison systems of <a href="#s5-6">Section 5.6</a>.</div>
+<div class="tbl"><table>
+<thead><tr><th>Step</th><th>Video_Games</th><th>Beauty</th><th>Amazon-2014</th></tr></thead>
+<tbody>
+<tr><td>Total gap (Recall@10)</td><td>0.0224</td><td>0.0134</td><td>0.0180</td></tr>
+<tr class="mid"><td>Quantization</td><td>91.9%<br><span class="ci">[79.4, 106.4]</span></td><td>58.2%<br><span class="ci">[48.6, 67.6]</span></td><td>80.5%<br><span class="ci">[68.7, 94.2]</span></td></tr>
+<tr><td>Discrete codes</td><td>−28.6%<br><span class="ci">[−42.0, −16.3]</span></td><td>−2.4% ≡<br><span class="ci">[−11.2, 6.3]</span></td><td>−2.5%<br><span class="ci">[−15.5, 11.0]</span></td></tr>
+<tr><td>Sequential encoder and examples (joint)</td><td>−41.9%<br><span class="ci">[−56.6, −30.8]</span></td><td>9.2%<br><span class="ci">[0.9, 17.4]</span></td><td>−37.0%<br><span class="ci">[−54.7, −22.3]</span></td></tr>
+<tr><td>Head and objective (matched pair)</td><td>56.9%<br><span class="ci">[46.4, 68.5]</span></td><td>24.0%<br><span class="ci">[13.2, 36.2]</span></td><td>52.3%<br><span class="ci">[37.6, 67.0]</span></td></tr>
+<tr><td>Trie renormalization</td><td>2.5% ≡<br><span class="ci">[0.2, 5.3]</span></td><td>2.1% ≡<br><span class="ci">[−0.3, 4.9]</span></td><td>1.4% ≡<br><span class="ci">[−1.5, 4.1]</span></td></tr>
+<tr><td>Beam search (width 10)</td><td>19.2%<br><span class="ci">[14.0, 24.8]</span></td><td>8.9%<br><span class="ci">[1.8, 16.2]</span></td><td>5.3% ≡<br><span class="ci">[0.7, 10.1]</span></td></tr>
+<tr class="mid"><td>Span across comparison systems</td><td>70.5 pts<br><span class="ci">[56.3, 88.3]</span></td><td>9.2 pts<br><span class="ci">[2.9, 18.4]</span></td><td>39.5 pts<br><span class="ci">[24.4, 60.9]</span></td></tr>
+</tbody></table></div>
+</figure>
+
+<h3 id="s5-3"><span class="n">5.3</span>Decoding is secondary but nonzero</h3>
+
+<p>Trie renormalization passes the equivalence test on all three catalogs, at 2.5%, 2.1% and 1.4% of the respective gaps, and it keeps passing at <i>K</i>&nbsp;=&nbsp;50 and <i>K</i>&nbsp;=&nbsp;100. Beam search at the matching cutoff accounts for 19.2% of the Video_Games gap at Recall@10, 8.9% on Beauty and 5.3% on Amazon-2014, and its share falls as the cutoff grows, to 2.7%, 1.2% and 0.4% at <i>K</i>&nbsp;=&nbsp;100. The stage that attracts most of the decoding effort in the generative-retrieval literature is therefore not where most of the recall goes. It is not free either: a fifth of the Video_Games gap at the cutoff a product would deploy is large enough to tune for.</p>
+
+<h3 id="s5-4"><span class="n">5.4</span>Quantization dominates and responds to a controlled dose</h3>
+
+<p>Quantization, the step from the dense retriever to reconstructed content, is the largest entry on every catalog: 91.9% of the gap on Video_Games, 58.2% on Beauty and 80.5% on Amazon-2014. To test whether that share reflects the tokenizer rather than where the ladder starts, we intervene on it. Holding the code structure at three levels of 256 codes, we train the tokenizer to three operating points and re-run the ladder at each. Reconstruction error falls monotonically, and the quantization entry falls with it, from 0.0331 to 0.0240 to 0.0206 Recall@10 on Video_Games, with separated endpoint confidence intervals. On Video_Games the discrete codes also win back part of what reconstruction lost: code embeddings retrieve better than the vectors the RQ-VAE reconstructs from the same codes, a recovery of 28.6% of the gap. That recovery shrinks as the tokenizer improves (0.0167 → 0.0097 → 0.0064 Recall@10).</p>
+
+<h3 id="s5-5"><span class="n">5.5</span>The head-and-objective step depends on capacity</h3>
+
+<p>At the matched one-million-parameter point, the head-and-objective step is a loss on all three catalogs, with intervals excluding zero: 56.9% of the gap on Video_Games, 24.0% on Beauty and 52.3% on Amazon-2014. This is what a team comparing lightweight stacks at this scale would measure, and it describes an operating point rather than a constant. We retrain both heads at each decoder width under a frozen recipe, with learning rate and temperature fixed at their width-128 values and with identical examples and validation selection. On Video_Games the paired difference declines monotonically and changes sign (<a href="#f3">Figure 3</a>): +0.01725 at width 64 (0.4M parameters), +0.01275 at width 128 (1.0M, the main ladder), +0.00645 at width 256 (3.6M) and −0.00807 <span class="ci">[−0.01133, −0.00502]</span> at width 512 (13.4M). The sign change falls between widths 256 and 512, and at width 512 the autoregressive head beats its parameter-matched contrastive twin in every seed.</p>
+
+<figure id="f3" class="fig">
+<div class="row cap2"><svg viewBox="0 0 320 244" role="img" aria-label="Recall@10 of both heads by width"><line x1="46" y1="179.8" x2="308" y2="179.8" class="grid"/><line x1="43" y1="179.8" x2="46" y2="179.8" class="ax"/><text x="41.0" y="182.8" text-anchor="end" class="tk">0.035</text><line x1="46" y1="149.4" x2="308" y2="149.4" class="grid"/><line x1="43" y1="149.4" x2="46" y2="149.4" class="ax"/><text x="41.0" y="152.4" text-anchor="end" class="tk">0.040</text><line x1="46" y1="119.0" x2="308" y2="119.0" class="grid"/><line x1="43" y1="119.0" x2="46" y2="119.0" class="ax"/><text x="41.0" y="122.0" text-anchor="end" class="tk">0.045</text><line x1="46" y1="88.6" x2="308" y2="88.6" class="grid"/><line x1="43" y1="88.6" x2="46" y2="88.6" class="ax"/><text x="41.0" y="91.6" text-anchor="end" class="tk">0.050</text><line x1="46" y1="58.2" x2="308" y2="58.2" class="grid"/><line x1="43" y1="58.2" x2="46" y2="58.2" class="ax"/><text x="41.0" y="61.2" text-anchor="end" class="tk">0.055</text><line x1="46" y1="40" x2="46" y2="192" class="ax"/><line x1="46" y1="192" x2="308" y2="192" class="ax"/><line x1="78.8" y1="192" x2="78.8" y2="195" class="ax"/><text x="78.8" y="206.0" text-anchor="middle" class="tk">64</text><text x="78.8" y="218.0" text-anchor="middle" class="pm">0.4M</text><line x1="144.2" y1="192" x2="144.2" y2="195" class="ax"/><text x="144.2" y="206.0" text-anchor="middle" class="tk">128</text><text x="144.2" y="218.0" text-anchor="middle" class="pm">1.0M</text><line x1="209.8" y1="192" x2="209.8" y2="195" class="ax"/><text x="209.8" y="206.0" text-anchor="middle" class="tk">256</text><text x="209.8" y="218.0" text-anchor="middle" class="pm">3.6M</text><line x1="275.2" y1="192" x2="275.2" y2="195" class="ax"/><text x="275.2" y="206.0" text-anchor="middle" class="tk">512</text><text x="275.2" y="218.0" text-anchor="middle" class="pm">13.4M</text><text x="177.0" y="238.0" text-anchor="middle" class="tk">decoder width (total parameters)</text><text x="4.0" y="30.0" class="tk">Recall@10</text><text x="4.0" y="14.0" class="pl">a</text><rect x="22" y="7" width="7" height="7" class="mk-ct"/><line x1="14" y1="10.5" x2="37" y2="10.5" class="ln-ct"/><text x="42.0" y="14.0" class="tk">contrastive head</text><line x1="136" y1="10.5" x2="159" y2="10.5" class="ln-ar"/><circle cx="147.5" cy="10.5" r="3.6" class="mk-ar"/><text x="164.0" y="14.0" class="tk">autoregressive head</text><polyline points="78.8,72.3 144.2,56.3 209.8,68.3 275.2,166.0" class="ln-ct"/><polyline points="78.8,177.2 144.2,133.8 209.8,107.5 275.2,116.9" class="ln-ar"/><rect x="75.2" y="68.8" width="7" height="7" class="mk-ct"><title>width 64 (0.4M): contrastive Recall@10 0.0527</title></rect><circle cx="78.8" cy="177.2" r="3.8" class="mk-ar"><title>width 64 (0.4M): autoregressive Recall@10 0.0354</title></circle><rect x="140.8" y="52.8" width="7" height="7" class="mk-ct"><title>width 128 (1.0M): contrastive Recall@10 0.0553</title></rect><circle cx="144.2" cy="133.8" r="3.8" class="mk-ar"><title>width 128 (1.0M): autoregressive Recall@10 0.0426</title></circle><rect x="206.2" y="64.8" width="7" height="7" class="mk-ct"><title>width 256 (3.6M): contrastive Recall@10 0.0534</title></rect><circle cx="209.8" cy="107.5" r="3.8" class="mk-ar"><title>width 256 (3.6M): autoregressive Recall@10 0.0469</title></circle><rect x="271.8" y="162.5" width="7" height="7" class="mk-ct"><title>width 512 (13.4M): contrastive Recall@10 0.0373</title></rect><circle cx="275.2" cy="116.9" r="3.8" class="mk-ar"><title>width 512 (13.4M): autoregressive Recall@10 0.0454</title></circle></svg><svg viewBox="0 0 320 244" role="img" aria-label="Paired head-and-objective entry"><line x1="46" y1="179.0" x2="308" y2="179.0" class="grid"/><line x1="43" y1="179.0" x2="46" y2="179.0" class="ax"/><text x="41.0" y="182.0" text-anchor="end" class="tk">-0.01</text><line x1="46" y1="135.5" x2="308" y2="135.5" class="grid"/><line x1="43" y1="135.5" x2="46" y2="135.5" class="ax"/><text x="41.0" y="138.5" text-anchor="end" class="tk">0</text><line x1="46" y1="92.1" x2="308" y2="92.1" class="grid"/><line x1="43" y1="92.1" x2="46" y2="92.1" class="ax"/><text x="41.0" y="95.1" text-anchor="end" class="tk">+0.01</text><line x1="46" y1="48.7" x2="308" y2="48.7" class="grid"/><line x1="43" y1="48.7" x2="46" y2="48.7" class="ax"/><text x="41.0" y="51.7" text-anchor="end" class="tk">+0.02</text><line x1="46" y1="40" x2="46" y2="192" class="ax"/><line x1="46" y1="192" x2="308" y2="192" class="ax"/><line x1="78.8" y1="192" x2="78.8" y2="195" class="ax"/><text x="78.8" y="206.0" text-anchor="middle" class="tk">64</text><text x="78.8" y="218.0" text-anchor="middle" class="pm">0.4M</text><line x1="144.2" y1="192" x2="144.2" y2="195" class="ax"/><text x="144.2" y="206.0" text-anchor="middle" class="tk">128</text><text x="144.2" y="218.0" text-anchor="middle" class="pm">1.0M</text><line x1="209.8" y1="192" x2="209.8" y2="195" class="ax"/><text x="209.8" y="206.0" text-anchor="middle" class="tk">256</text><text x="209.8" y="218.0" text-anchor="middle" class="pm">3.6M</text><line x1="275.2" y1="192" x2="275.2" y2="195" class="ax"/><text x="275.2" y="206.0" text-anchor="middle" class="tk">512</text><text x="275.2" y="218.0" text-anchor="middle" class="pm">13.4M</text><text x="177.0" y="238.0" text-anchor="middle" class="tk">decoder width (total parameters)</text><text x="4.0" y="30.0" class="tk">contrastive minus autoregressive, Recall@10</text><text x="4.0" y="14.0" class="pl">b</text><polygon points="78.8,48.8 144.2,70.1 209.8,94.1 275.2,157.3 275.2,184.7 209.8,120.9 144.2,90.2 78.8,71.4" class="band"/><line x1="46" y1="135.5" x2="308" y2="135.5" class="zero"/><text x="52.0" y="129.5" class="pm">contrastive head ahead</text><text x="52.0" y="148.5" class="pm">autoregressive head ahead</text><polyline points="78.8,60.6 144.2,80.2 209.8,107.5 275.2,170.6" class="ln-ink"/><circle cx="78.8" cy="60.6" r="3.8" class="mk-ink"><title>width 64 (0.4M): +0.01725 [+0.01478, +0.01998]</title></circle><circle cx="144.2" cy="80.2" r="3.8" class="mk-ink"><title>width 128 (1.0M): +0.01275 [+0.01045, +0.01507]</title></circle><circle cx="209.8" cy="107.5" r="3.8" class="mk-ink"><title>width 256 (3.6M): +0.00645 [+0.00337, +0.00955]</title></circle><circle cx="275.2" cy="170.6" r="3.8" class="mk-ink"><title>width 512 (13.4M): -0.00807 [-0.01133, -0.00502]</title></circle><circle cx="144.2" cy="80.2" r="7.5" class="ring"/><text x="154.2" y="71.2" class="pm">main ladder</text></svg></div>
+<figcaption><span class="lbl">Figure 3.</span> The ordering of the matched heads depends on capacity (Video_Games, frozen recipe). <b>a</b>, Recall@10 of the contrastive head and the autoregressive head, both retrained at each width. <b>b</b>, Their paired difference, contrastive minus autoregressive, with its hierarchical 95% bootstrap interval; positive values favor the contrastive head. Width 128 is the main ladder.</figcaption>
+</figure>
+
+<p>Both heads move. The autoregressive head improves steadily with width, while the contrastive head peaks at width 256 and falls back. The autoregressive head's disadvantage at small width is a property of the tested regime, not of the objective as such.</p>
+
+<p><span class="runin">Where the loss sits.</span> At Recall@10 the head-and-objective loss concentrates in the upper popularity deciles and peaks in the most popular decile on all three catalogs (interaction between the most popular decile and the rest of +0.062, +0.040 and +0.057, with intervals excluding zero), whereas the quantization loss spreads across the more popular half of the catalog. One candidate explanation is that the autoregressive head mis-calibrates item popularity, so we ran ten training-time logit-adjustment runs on Video_Games with marginal and conditional-prefix priors at |<i>τ</i>| ≤ 0.5. None produced a statistically resolved Recall@10 improvement, and every run at |<i>τ</i>|&nbsp;=&nbsp;0.5 lowered Recall@10, by 0.0025 to 0.0077. Within this family of priors, the loss is not a popularity-calibration artifact.</p>
+
+<h3 id="s5-6"><span class="n">5.6</span>Attribution depends on the comparison system</h3>
+
+<p>Every entry above is measured directly. A statement such as “switching to an autoregressive model costs <i>X</i>% of the gap” needs one more choice: the non-autoregressive system to compare against. Three systems on the ladder are reasonable choices: the sequential contrastive model (our primary choice, the matched twin), the code-embedding two-tower and the reconstructed-content two-tower. <a href="#f4">Figure 4</a> shows the share of the gap attributed to the autoregressive model under each. On Video_Games it runs from +56.9% against the sequential contrastive model to +15.0% against code embeddings and −13.6% against reconstructed content, a span of 70.5 percentage points <span class="ci">[56.3, 88.3]</span>; none of 2,000 bootstrap replicates falls within the pre-registered 15-point stability rule. The same measured systems thus support both “the autoregressive model costs 57% of the gap” and “the autoregressive model recovers 14% of it”. Amazon-2014 spans 39.5 points, with 3 of 2,000 replicates within the rule. Beauty spans 9.2 points and satisfies the rule on its point estimate, with bootstrap support of 1,749 of 2,000.</p>
+
+<figure id="f4" class="fig">
+<div class="scroll"><svg viewBox="0 0 680 294" role="img" aria-label="Autoregressive share by comparison"><text x="494.0" y="16.0" class="tk b">span [95% CI]</text><text x="676.0" y="16.0" text-anchor="end" class="tk b">≤ 15 pts</text><line x1="247.4" y1="24" x2="247.4" y2="252" class="grid"/><line x1="247.4" y1="252" x2="247.4" y2="255" class="ax"/><text x="247.4" y="266.0" text-anchor="middle" class="tk">-20</text><line x1="298.2" y1="24" x2="298.2" y2="252" class="zero-d"/><line x1="298.2" y1="252" x2="298.2" y2="255" class="ax"/><text x="298.2" y="266.0" text-anchor="middle" class="tk">0</text><line x1="349.0" y1="24" x2="349.0" y2="252" class="grid"/><line x1="349.0" y1="252" x2="349.0" y2="255" class="ax"/><text x="349.0" y="266.0" text-anchor="middle" class="tk">+20</text><line x1="399.8" y1="24" x2="399.8" y2="252" class="grid"/><line x1="399.8" y1="252" x2="399.8" y2="255" class="ax"/><text x="399.8" y="266.0" text-anchor="middle" class="tk">+40</text><line x1="450.6" y1="24" x2="450.6" y2="252" class="grid"/><line x1="450.6" y1="252" x2="450.6" y2="255" class="ax"/><text x="450.6" y="266.0" text-anchor="middle" class="tk">+60</text><line x1="222" y1="252" x2="476" y2="252" class="ax"/><text x="349.0" y="282.0" text-anchor="middle" class="tk">share of the Recall@10 gap attributed to the autoregressive model (%)</text><text x="8.0" y="42.0" class="tk b">Video_Games</text><text x="494.0" y="42.0" class="tk">70.5 pts [56.3, 88.3]</text><text x="676.0" y="42.0" text-anchor="end" class="tk">0 / 2,000</text><text x="20.0" y="59.5" class="tk">from sequential contrastive (primary)</text><line x1="416.1" y1="56.0" x2="472.2" y2="56.0" class="ci"/><circle cx="442.7" cy="56.0" r="3.8" class="mk-ink"><title>Video_Games, from sequential contrastive (primary): +56.9% [+46.4, +68.5]</title></circle><text x="20.0" y="75.5" class="tk">from code embeddings</text><line x1="309.6" y1="72.0" x2="359.7" y2="72.0" class="ci"/><circle cx="336.3" cy="72.0" r="3.8" class="mk-open"><title>Video_Games, from code embeddings: +15.0% [+4.5, +24.2]</title></circle><text x="20.0" y="91.5" class="tk">from reconstructed content</text><line x1="227.6" y1="88.0" x2="294.4" y2="88.0" class="ci"/><circle cx="263.7" cy="88.0" r="3.8" class="mk-open"><title>Video_Games, from reconstructed content: -13.6% [-27.8, -1.5]</title></circle><text x="8.0" y="118.0" class="tk b">Amazon-2014</text><text x="494.0" y="118.0" class="tk">39.5 pts [24.4, 60.9]</text><text x="676.0" y="118.0" text-anchor="end" class="tk">3 / 2,000</text><text x="20.0" y="135.5" class="tk">from sequential contrastive (primary)</text><line x1="393.7" y1="132.0" x2="468.4" y2="132.0" class="ci"/><circle cx="431.0" cy="132.0" r="3.8" class="mk-ink"><title>Amazon-2014, from sequential contrastive (primary): +52.3% [+37.6, +67.0]</title></circle><text x="20.0" y="151.5" class="tk">from code embeddings</text><line x1="302.5" y1="148.0" x2="365.5" y2="148.0" class="ci"/><circle cx="337.1" cy="148.0" r="3.8" class="mk-open"><title>Amazon-2014, from code embeddings: +15.3% [+1.7, +26.5]</title></circle><text x="20.0" y="167.5" class="tk">from reconstructed content</text><line x1="293.1" y1="164.0" x2="363.2" y2="164.0" class="ci"/><circle cx="330.7" cy="164.0" r="3.8" class="mk-open"><title>Amazon-2014, from reconstructed content: +12.8% [-2.0, +25.6]</title></circle><text x="8.0" y="194.0" class="tk b">Beauty</text><text x="494.0" y="194.0" class="tk">9.2 pts [2.9, 18.4]</text><text x="676.0" y="194.0" text-anchor="end" class="tk">1,749 / 2,000</text><text x="20.0" y="211.5" class="tk">from sequential contrastive (primary)</text><line x1="331.7" y1="208.0" x2="390.1" y2="208.0" class="ci"/><circle cx="359.2" cy="208.0" r="3.8" class="mk-ink"><title>Beauty, from sequential contrastive (primary): +24.0% [+13.2, +36.2]</title></circle><text x="20.0" y="227.5" class="tk">from code embeddings</text><line x1="356.4" y1="224.0" x2="412.0" y2="224.0" class="ci"/><circle cx="382.5" cy="224.0" r="3.8" class="mk-open"><title>Beauty, from code embeddings: +33.2% [+22.9, +44.8]</title></circle><text x="20.0" y="243.5" class="tk">from reconstructed content</text><line x1="351.0" y1="240.0" x2="403.4" y2="240.0" class="ci"/><circle cx="376.4" cy="240.0" r="3.8" class="mk-open"><title>Beauty, from reconstructed content: +30.8% [+20.8, +41.4]</title></circle></svg></div>
+<figcaption><span class="lbl">Figure 4.</span> Share of the Recall@10 gap attributed to the autoregressive model when it is compared against each of three systems, with hierarchical 95% bootstrap intervals (filled marker: primary comparison). The span is the range across comparisons; the count is the number of 2,000 bootstrap replicates whose span falls within the pre-registered 15-point rule.</figcaption>
+</figure>
+
+<p>The cause is the shape of the ladder. It contains measured recoveries (discrete codes at −28.6% and the joint encoder-and-examples step at −41.9% on Video_Games), so comparisons that start at different systems accumulate different amounts before they reach the autoregressive model. The same behaviour appears one level down. Swapping heads on a frozen encoder splits the head-and-objective step into a representation part and a scoring part, and the split depends on the direction of the swap on both catalogs where both directions were run. On Video_Games, a contrastive head trained on the frozen autoregressive encoder makes the step mostly representation (0.0092 against 0.0036), while the reverse swap assigns 0.0181 to the head. We therefore report each entry with its comparison system and confidence interval, together with the span across reasonable comparisons as a sensitivity check. The span costs nothing beyond quantities a ledger already computes, and it tells a reader whether a headline attribution would survive a different, equally defensible choice.</p>
+
+<h3 id="s5-7"><span class="n">5.7</span>Implications and scope</h3>
+
+<p><span class="runin">For practice.</span> For a team weighing a migration, the ledger reorders the work queue. The largest entries are the tokenizer and the head-and-objective step, while beam search stays secondary at every cutoff measured, so tokenizer training and the discrete interface repay effort sooner than wider beams. Because the ordering of the matched heads reverses with decoder width on the catalog and recipe tested, contrastive and autoregressive stacks should be compared at matched capacity before an ordering is assumed. And because attribution depends on the comparison system, a reported attribution should name its comparison system and give the span across the alternatives.</p>
+
+<p><span class="runin">Scope.</span> Both ends of the ladder are lightweight by construction, matched at about one million parameters; this is what makes a stage-matched ledger possible, and it is what the entries describe. The capacity crossover is demonstrated on Video_Games under a frozen recipe at this data scale, and it establishes that the ordering is not invariant rather than a law every catalog follows. The ledger reports contrasts labeled by their comparison system and is not a unique causal decomposition.</p>
+
+<!-- ============================================================ 6 -->
+<h2 id="s6"><span class="n">6</span>Engineering notes</h2>
+
+<p>Several failure modes surfaced while the system was built, and each is now guarded in code or configuration. <a href="#t12">Table 12</a> lists those with the widest relevance beyond this project; <code>docs/PITFALLS.md</code> in the repository records the rest with root causes.</p>
+
+<figure id="t12">
+<div class="cap"><span class="lbl">Table 12.</span> Failure modes and their guards.</div>
+<div class="tbl"><table class="notes">
+<thead><tr><th>Symptom</th><th>Cause</th><th>Guard</th></tr></thead>
+<tbody>
+<tr><td>Training ran on CPU with no error</td><td>default PyTorch wheel built for CUDA 13.0 on a CUDA 12.8 driver</td><td>pin CUDA 12.8 wheels; assert GPU at startup</td></tr>
+<tr><td>Installing vLLM broke the <code>transformers</code> import for the whole environment</td><td>the wheel links the CUDA 13 runtime and ships an incompatible audio library</td><td>run generation on the <code>transformers</code> backend</td></tr>
+<tr><td>Batched VLM output valid for one row per batch</td><td>right padding in decoder-only generation</td><td>left padding (3/24 → 24/24 valid)</td></tr>
+<tr><td>Smaller VLM no faster than the larger one</td><td>batch size tuned for the larger model; 61% GPU utilization</td><td>tune batch size per model; 100% utilization</td></tr>
+<tr><td>Hard negatives made the cascade worse</td><td>held-out positives sampled as negatives</td><td>resample against validation and test items</td></tr>
+<tr><td>A was-retrieved flag would leak labels</td><td>training positives are removed from the candidate file</td><td>use the continuous retrieval score</td></tr>
+<tr><td>Serving crashed on the 208K-item catalog</td><td>HNSW returns −1 when its search depth cannot supply <i>k</i> results</td><td>search depth ≥ <i>k</i>; drop −1 results</td></tr>
+<tr><td>Image cache could pair items with the wrong pictures</td><td>cache keyed on an item number that changes with every rebuild</td><td>key on Amazon's stable product ID</td></tr>
+<tr><td>A whole source package was missing from git</td><td>an ignore rule meant for the data folder also matched a source folder with the same name</td><td>anchor the rule to the repository root</td></tr>
+</tbody></table></div>
+</figure>
+
+<!-- ============================================================ 7 -->
+<h2 id="s7"><span class="n">7</span>Takeaways</h2>
+
+<ol class="plain">
+<li>Item representation sets the ceiling of every stage. Content adds 66% to retrieval recall and 0.097 to ranking GAUC, and without it the ranker falls below chance on the cold slice.</li>
+<li>Content-derived signals divide the catalog. VLM profiles capture most of the multimodal signal in a short embedding and their lift grows with sparsity (+1.5% to +3.1%); semantic IDs carry the cold slice, +46% and +47% on the two catalogs.</li>
+<li>Cascade consistency is a data problem before it is a model problem. A clean negative pool and a continuous cross-stage score recover up to 48% of cascade NDCG@10, and a feature has to be judged by how it is built at training time, not by what it means at serving time.</li>
+<li>Model choices should be selected, not fixed. Three runs produced three different winning cascade variants, and validation selection, with a metadata file saved beside each checkpoint, kept serving consistent through each change.</li>
+<li>In the generative stack, the largest losses sit upstream of the decoder. Quantization is the largest entry on every catalog, trie renormalization is equivalence-negligible, and beam search is secondary but nonzero.</li>
+<li>The ordering of contrastive and autoregressive heads depends on capacity, and gap attribution depends on the comparison system. Compare at matched capacity, and report the comparison system together with the span.</li>
+</ol>
+
+<p>VLM-Rec measures each component of a recommendation cascade instead of assuming its value, and the same system serves as a controlled laboratory for a question the field is asking now. Finite catalogs make exact top-<i>K</i> ranking of a generative retriever computable; with that tool the dense-to-generative gap becomes a ledger of measured stage contrasts, and the ledger points practitioners to the tokenizer and to the head-and-objective step, measured at matched capacity.</p>
+
+<!-- ============================================================ A -->
+<h2 id="sA"><span class="n">A</span>Key parameters</h2>
+
+<figure id="tA1">
+<div class="cap"><span class="lbl">Table A1.</span> Key parameters of every stage. All models train with Adam. The Beauty run uses the same values except where noted.</div>
+<div class="tbl"><table class="notes params">
+<thead><tr><th>Component</th><th>Setting</th></tr></thead>
+<tbody>
+<tr class="grp"><td colspan="2">Data</td></tr>
+<tr><td>Filtering and split</td><td>earliest interaction per user-item pair; 5-core on users and items; temporal leave-last-out (last item test, second-to-last validation)</td></tr>
+<tr><td>Cold slice</td><td>test users whose target item is in the bottom quartile of training popularity</td></tr>
+<tr class="grp"><td colspan="2">Item encoders (frozen)</td></tr>
+<tr><td>Text</td><td>all-MiniLM-L6-v2 over title, description and features (first 1,000 characters); 384-d</td></tr>
+<tr><td>Image</td><td>CLIP ViT-B/32 (LAION-2B weights) on the main product image; 512-d, plus a 1-d image-present flag</td></tr>
+<tr><td>VLM profile</td><td>Qwen2.5-VL-7B-Instruct (3B on Beauty), greedy decoding, at most 320 new tokens, images capped at 768 × 768 pixels; profile text encoded by MiniLM, 384-d</td></tr>
+<tr class="grp"><td colspan="2">Retrieval</td></tr>
+<tr><td>Two-tower</td><td>each tower an MLP 1,281 → 256 → 128 with LayerNorm, GELU and dropout 0.1; outputs L2-normalized</td></tr>
+<tr><td>Training</td><td>in-batch softmax with log-frequency correction, temperature 0.05; batch 4,096; learning rate 0.002; 10 epochs</td></tr>
+<tr><td>Hybrid mode inputs</td><td>item-ID embedding 64-d; price in 16 equal-frequency buckets, 8-d; category leaf (at least 20 items), 16-d</td></tr>
+<tr><td>Index</td><td>exact inner product by default; HNSW with 32 links per node and search depth 256; IVF with 256 lists, 8 probed</td></tr>
+<tr><td>Candidates</td><td>200 per request (264 fetched, then items the user has seen are removed)</td></tr>
+<tr class="grp"><td colspan="2">Ranking and cascade</td></tr>
+<tr><td>Ranker</td><td>DIN over the last 30 items; DCN-v2 with 2 cross layers; MMoE with 4 experts of width 128 and 2 tasks (click, rating ≥ 4); model width 128; ID, price and category embeddings 32, 8 and 16-d</td></tr>
+<tr><td>Ranker training</td><td>4 sampled negatives per positive, half drawn from retrieval candidates in the cascade variants; batch 2,048; learning rate 0.001; 3 epochs; GAUC on 100 sampled negatives per user</td></tr>
+<tr><td>Pre-ranker</td><td>ranker without DIN and cross layers, distilled from the ranker's click logits for 2 epochs; keeps 50 of 200 candidates</td></tr>
+<tr><td>Post-processing</td><td>score P(click) · P(satisfaction), blended with the retrieval score by a weight tuned on validation; MMR weight 0.7 or greedy DPP; final list of 20 by default</td></tr>
+<tr class="grp"><td colspan="2">Semantic IDs</td></tr>
+<tr><td>RQ-VAE</td><td>encoder 1,281 → 512 → 256 → 64; 3 levels of 256 codes; commitment weight 0.25; codebook moving-average decay 0.99; unused codes reset after 200 steps; batch 2,048; learning rate 0.001; 300 epochs</td></tr>
+<tr><td>TIGER-style retriever</td><td>decoder-only transformer, width 128, 4 layers, 4 heads; history of 20 items (60 tokens); vocabulary 769; beam width 20; batch 256; learning rate 0.001; 5 epochs</td></tr>
+<tr class="grp"><td colspan="2">Loss-ledger study (Section 5)</td></tr>
+<tr><td>Matched heads</td><td>shared transformer encoder as above; 999,168 (contrastive, temperature 0.05) and 999,041 (autoregressive) parameters</td></tr>
+<tr><td>Training</td><td>up to 10 epochs with patience 3; batch 1,024; learning rate 0.001; epoch chosen by validation Recall@10 on a fixed sample of 2,048 users</td></tr>
+<tr><td>Capacity arms</td><td>decoder widths 64, 128, 256, 512 (0.4M, 1.0M, 3.6M, 13.4M parameters), both heads retrained at every width</td></tr>
+<tr><td>Statistics</td><td>3 seeds per catalog; 2,000 hierarchical seed × user bootstrap replicates; equivalence margin 10% of the local gap; stability rule 15 percentage points</td></tr>
+</tbody></table></div>
+</figure>
+
+<!-- ============================================================ B -->
+<h2 id="sB"><span class="n">B</span>Reproduction</h2>
+
+<p>Every stage of the system is one <code>make</code> target or CLI command, configured by <code>configs/config.yaml</code>; <code>configs/scale.yaml</code> is the Beauty profile.</p>
+
+<pre><code>uv sync --all-extras    # every stage, incl. FAISS and MLflow
+make data               # download, 5-core, split, embeddings
+make retrieval          # two-tower variants + retrieval ablation
+make ranking            # DIN + DCN-v2 + MMoE + ranking ablation
+make rerank             # consistency grid, distillation, diversity
+make vlm                # Qwen2.5-VL profiles + five-way ablation
+make sid                # RQ-VAE semantic IDs + SID-vs-ID ablation
+make serve              # API on :8000, Streamlit demo on :8501
+uv run vlmrec &lt;stage&gt; --config configs/scale.yaml    # Beauty</code></pre>
+
+<p class="cont">System experiments ran on a single RTX 4090 (24&nbsp;GB) under WSL2, and serving latencies are CPU-only. The loss-ledger study used about 118 GPU-hours across three catalogs, three seeds and the intervention runs. Numbers in Sections 2 to 4 come from the metrics files these commands write, and <code>docs/RESULTS.md</code> records the provenance of each table.</p>
+
+
+<h2 id="refs">References</h2>
+<ol class="refs">
+<li id="r1">S. Rajput et al. Recommender systems with generative retrieval. <i>NeurIPS</i>, 2023.</li>
+<li id="r2">Y. Hou et al. Bridging language and items for retrieval and recommendation. arXiv preprint, 2024.</li>
+<li id="r3">N. Reimers and I. Gurevych. Sentence-BERT: Sentence embeddings using Siamese BERT-networks. <i>EMNLP</i>, 2019.</li>
+<li id="r4">A. Radford et al. Learning transferable visual models from natural language supervision. <i>ICML</i>, 2021.</li>
+<li id="r5">S. Bai et al. Qwen2.5-VL technical report. arXiv preprint, 2025.</li>
+<li id="r6">X. Yi et al. Sampling-bias-corrected neural modeling for large corpus item recommendations. <i>RecSys</i>, 2019.</li>
+<li id="r7">J. Johnson, M. Douze and H. Jégou. Billion-scale similarity search with GPUs. <i>IEEE Transactions on Big Data</i>, 2019.</li>
+<li id="r8">Y. Malkov and D. Yashunin. Efficient and robust approximate nearest neighbor search using hierarchical navigable small world graphs. <i>IEEE TPAMI</i>, 2018.</li>
+<li id="r9">G. Zhou et al. Deep interest network for click-through rate prediction. <i>KDD</i>, 2018.</li>
+<li id="r10">R. Wang et al. DCN V2: Improved deep &amp; cross network and practical lessons for web-scale learning to rank systems. <i>WWW</i>, 2021.</li>
+<li id="r11">J. Ma et al. Modeling task relationships in multi-task learning with multi-gate mixture-of-experts. <i>KDD</i>, 2018.</li>
+<li id="r12">J. Carbonell and J. Goldstein. The use of MMR, diversity-based reranking for reordering documents and producing summaries. <i>SIGIR</i>, 1998.</li>
+<li id="r13">L. Chen, G. Zhang and H. Zhou. Fast greedy MAP inference for determinantal point process to improve recommendation diversity. <i>NeurIPS</i>, 2018.</li>
+<li id="r14">D. Lee et al. Autoregressive image generation using residual quantization. <i>CVPR</i>, 2022.</li>
+<li id="r15">J.-T. Huang et al. Embedding-based retrieval in Facebook search. <i>KDD</i>, 2020.</li>
+</ol>
+
+<footer>VLM-Rec technical report · version 2 · 2 November 2026</footer>
+</main>
+</body>
+</html>
