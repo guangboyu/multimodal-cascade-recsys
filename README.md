@@ -7,8 +7,8 @@ structured profiles written by Qwen2.5-VL, and each design choice is backed by a
 system also serves as a test bed for measuring where semantic-ID generative retrieval loses recall
 compared with dense retrieval.
 
-Technical report: [PDF](docs/tech-report.pdf) · [HTML](docs/tech-report.html) (download and open
-in a browser for the interactive figures)
+Technical report: [web version](https://guangboyu.github.io/multimodal-cascade-recsys/tech-report.html)
+· [PDF](docs/tech-report.pdf)
 
 ![Replaying a user through the live cascade](docs/demo.gif)
 
